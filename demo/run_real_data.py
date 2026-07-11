@@ -24,7 +24,9 @@ from anbr.trainer import Trainer
 METHODS = ["none", "ridge", "lasso", "elastic_net", "covridge", "sparridge"]
 ENERGY_GRID = [0.001, 0.01, 0.1, 0.5, 0.9]
 LEUKEMIA_BOUNDS = [0.0001, 1.0]
-LEUKEMIA_GRID = [float(x) for x in np.linspace(LEUKEMIA_BOUNDS[0], LEUKEMIA_BOUNDS[1], 5)]
+LEUKEMIA_GRID = [
+    float(x) for x in np.linspace(LEUKEMIA_BOUNDS[0], LEUKEMIA_BOUNDS[1], 5)
+]
 
 
 def _build_param_grid(method: str, grid: List[float]) -> List[Dict[str, float]]:
