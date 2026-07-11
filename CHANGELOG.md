@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CHANGELOG.md following Keep a Changelog format
 - Comprehensive README with badges, usage examples, and project structure
 - FUNDING.yml for sponsorship configuration
+- Comprehensive docstrings across all modules, classes, and public methods
+  with Args/Returns/Raises sections, edge-case documentation, and
+  numerical stability notes (`e07df44` — 2026-07-11)
 
 ### Changed
 
@@ -25,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated pyproject.toml with full project metadata
 - Enhanced CI workflow with build verification step
 - Improved .gitignore with additional patterns
+- Removed unused imports: `Tuple` from network, `Any`/`Tuple`/`StandardScaler`
+  from trainer, `Callable` from cv, `StandardScaler` from run_real_data,
+  `pytest` from test_network, `build_regularizer` from test_integration
+  (`468d98b` — 2026-07-11)
+- Applied black formatting to test files for style consistency
+  (`2b8316d` — 2026-07-11)
 
 ## [0.1.0] - 2026-01-01
 
