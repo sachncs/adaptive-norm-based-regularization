@@ -41,6 +41,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed stale `.mypy.ini` that overrode pyproject.toml
   `python_version` setting, causing numpy PEP 695 `type` syntax
   errors on CI (`221e1d9` — 2026-07-11)
+- Cast `np.linspace` result to native `float` in `run_real_data.py`
+  for mypy `list[float]` compatibility (`813343d` — 2026-07-11)
+
+### Removed
+
+- Removed `.env.example` — project requires no environment variables;
+  all hyperparameters are passed programmatically or via CLI arguments
 
 ## [0.1.1] - 2026-06-19
 
@@ -65,8 +72,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive README with badges, usage examples, and project structure
   (`5fd67e7`..`e519252`)
 - FUNDING.yml for sponsorship configuration
-  (`5fd67e7`..`e519252`)
-- `.env.example` with documented environment variables
   (`5fd67e7`..`e519252`)
 
 ### Changed
