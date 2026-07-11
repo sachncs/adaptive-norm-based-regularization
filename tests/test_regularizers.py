@@ -94,7 +94,9 @@ def test_lasso_subgradient_at_zero():
 def test_elastic_net_penalty_and_gradient():
     w = np.array([[1.0, -2.0], [0.0, 3.0]])
     reg = ElasticNet(alpha=0.5, gamma=1.0)
-    expected_penalty = 0.5 * 1.0 * np.sum(np.abs(w)) + (1 - 0.5) * 0.5 * np.sum(w**2)
+    expected_penalty = 0.5 * 1.0 * np.sum(np.abs(w)) + (1 - 0.5) * 0.5 * np.sum(
+        w**2
+    )
     assert np.isclose(reg.penalty(w), expected_penalty)
     expected_grad = 0.5 * 1.0 * np.sign(w) + (1 - 0.5) * w
     np.testing.assert_allclose(reg.gradient(w), expected_grad)

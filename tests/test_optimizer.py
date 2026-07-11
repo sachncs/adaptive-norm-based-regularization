@@ -21,7 +21,9 @@ def test_adam_moment_estimates():
     # so each step ≈ -lr. After 1000 steps ≈ -100.
     for _ in range(1000):
         params = opt.step(params, grads)
-    np.testing.assert_allclose(params["weights"][0], np.full((1, 1), -100.0), atol=1e-3)
+    np.testing.assert_allclose(
+        params["weights"][0], np.full((1, 1), -100.0), atol=1e-3
+    )
 
 
 def test_adam_reset():
@@ -67,5 +69,7 @@ def test_adam_multiple_parameter_groups():
     assert len(new_params["weights"]) == 2
     assert len(new_params["biases"]) == 2
     for i in range(2):
-        assert not np.array_equal(new_params["weights"][i], params["weights"][i])
+        assert not np.array_equal(
+            new_params["weights"][i], params["weights"][i]
+        )
         assert not np.array_equal(new_params["biases"][i], params["biases"][i])
