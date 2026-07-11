@@ -30,7 +30,7 @@ Please read it before contributing.
    ```
 3. **Add upstream remote**:
    ```bash
-   git remote add upstream https://github.com/sachn-cs/adaptive-norm-based-regularization.git
+   git remote add upstream https://github.com/sachncs/adaptive-norm-based-regularization.git
    ```
 4. **Create a branch** for your changes:
    ```bash

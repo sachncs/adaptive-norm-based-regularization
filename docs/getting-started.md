@@ -13,7 +13,7 @@ with Adaptive Norm-Based Regularization.
 
 ```bash
 # Clone the repository
-git clone https://github.com/sachn-cs/adaptive-norm-based-regularization.git
+git clone https://github.com/sachncs/adaptive-norm-based-regularization.git
 cd adaptive-norm-based-regularization
 
 # Create a virtual environment (recommended)

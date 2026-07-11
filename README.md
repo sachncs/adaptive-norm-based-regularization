@@ -4,8 +4,8 @@
   <p align="center">
     <a href="#installation"><img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python 3.10+"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
-    <a href="https://github.com/sachn-cs/adaptive-norm-based-regularization/actions"><img src="https://img.shields.io/github/actions/workflow/status/sachn-cs/adaptive-norm-based-regularization/ci.yml?branch=master" alt="CI"></a>
-    <a href="https://github.com/sachn-cs/adaptive-norm-based-regularization/blob/master/pyproject.toml"><img src="https://img.shields.io/badge/version-0.1.0-green" alt="Version"></a>
+    <a href="https://github.com/sachncs/adaptive-norm-based-regularization/actions"><img src="https://img.shields.io/github/actions/workflow/status/sachncs/adaptive-norm-based-regularization/ci.yml?branch=master" alt="CI"></a>
+    <a href="https://github.com/sachncs/adaptive-norm-based-regularization/blob/master/pyproject.toml"><img src="https://img.shields.io/badge/version-0.1.0-green" alt="Version"></a>
     <a href="https://github.com/psf/black"><img src="https://img.shields.io/badge/code%20style-black-000000.svg" alt="Code style: black"></a>
   </p>
 </p>
@@ -40,7 +40,7 @@ hidden deep-learning framework defaults.
 ### From source
 
 ```bash
-git clone https://github.com/sachn-cs/adaptive-norm-based-regularization.git
+git clone https://github.com/sachncs/adaptive-norm-based-regularization.git
 cd adaptive-norm-based-regularization
 pip install -e .
 ```

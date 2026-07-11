@@ -51,11 +51,11 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/sachn-cs/adaptive-norm-based-regularization"
-Repository = "https://github.com/sachn-cs/adaptive-norm-based-regularization"
-Issues = "https://github.com/sachn-cs/adaptive-norm-based-regularization/issues"
-Documentation = "https://github.com/sachn-cs/adaptive-norm-based-regularization/tree/main/docs"
-Changelog = "https://github.com/sachn-cs/adaptive-norm-based-regularization/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/sachncs/adaptive-norm-based-regularization"
+Repository = "https://github.com/sachncs/adaptive-norm-based-regularization"
+Issues = "https://github.com/sachncs/adaptive-norm-based-regularization/issues"
+Documentation = "https://github.com/sachncs/adaptive-norm-based-regularization/tree/master/docs"
+Changelog = "https://github.com/sachncs/adaptive-norm-based-regularization/blob/master/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["."]
