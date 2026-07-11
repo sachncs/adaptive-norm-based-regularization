@@ -1,33 +1,60 @@
-"""Manual feedforward ReLU network with backpropagation."""
+"""Manual feedforward ReLU network with back-propagation.
 
-from typing import Dict, List, Tuple
+Implements a fully connected multi-layer perceptron using only NumPy.
+All forward and backward passes are explicit -- there is no autograd
+engine.  Weight initialization follows the Xavier (Glorot) uniform
+scheme.
+
+Typical usage
+-------------
+>>> net = FullyConnectedNetwork([p, 64, 32, 1])
+>>> out = net.forward(x)
+>>> grads = net.backward(dloss)
+"""
+
+from typing import Dict, List
 
 import numpy as np
 
 
 def xavier_uniform(fan_in: int, fan_out: int) -> np.ndarray:
-    """Xavier uniform initialization.
+    """Sample a weight matrix from the Xavier uniform distribution.
+
+    Draws from ``Uniform(-limit, limit)`` where
+    ``limit = sqrt(6 / (fan_in + fan_out))``.
 
     Args:
-        fan_in: Input dimension.
-        fan_out: Output dimension.
+        fan_in: Number of input features.
+        fan_out: Number of output features.
 
     Returns:
-        Initialized weight matrix.
+        Weight matrix of shape ``(fan_in, fan_out)``.
     """
     limit = np.sqrt(6.0 / (fan_in + fan_out))
     return np.random.uniform(-limit, limit, size=(fan_in, fan_out))
 
 
 class FullyConnectedNetwork:
-    """Fully connected feedforward network with ReLU activations."""
+    """Feedforward MLP with ReLU hidden activations and a linear output.
+
+    The network stores its own forward-pass activations and
+    pre-activation values in ``_as`` and ``_zs`` respectively so that
+    :meth:`backward` can compute exact gradients without re-running the
+    forward pass.
+
+    Attributes:
+        layer_sizes: List of layer widths ``[input, hidden_1, ..., output]``.
+        n_layers: Number of weight matrices (``len(layer_sizes) - 1``).
+        weights: List of weight matrices, one per layer.
+        biases: List of row-vector biases, one per layer.
+    """
 
     def __init__(self, layer_sizes: List[int]) -> None:
-        """Initialize the network.
+        """Initialise weights with Xavier-uniform and biases to zero.
 
         Args:
-            layer_sizes: List of layer dimensions, including input and output.
-                e.g., [p, 64, 32, 1] for a 2-hidden-layer regression net.
+            layer_sizes: Layer widths including input and output, e.g.
+                ``[p, 64, 32, 1]`` for a 2-hidden-layer regression net.
         """
         self.layer_sizes = layer_sizes
         self.n_layers = len(layer_sizes) - 1
@@ -39,18 +66,21 @@ class FullyConnectedNetwork:
             self.weights.append(w)
             self.biases.append(b)
 
-        # Caches for forward pass.
+        # Forward-pass caches: pre-activations (_zs) and activations (_as).
         self._zs: List[np.ndarray] = []
         self._as: List[np.ndarray] = []
 
     def forward(self, x: np.ndarray) -> np.ndarray:
-        """Forward pass.
+        """Run the forward pass, caching intermediates for :meth:`backward`.
+
+        Hidden layers use ``ReLU(z) = max(z, 0)``; the output layer is
+        linear (no activation).
 
         Args:
-            x: Input of shape (n_samples, n_features).
+            x: Input batch of shape ``(n_samples, n_features)``.
 
         Returns:
-            Output of shape (n_samples, n_outputs).
+            Network output of shape ``(n_samples, n_outputs)``.
         """
         self._zs = []
         self._as = [x]
@@ -66,20 +96,26 @@ class FullyConnectedNetwork:
         return a
 
     def backward(self, dloss_dy: np.ndarray) -> Dict[str, List[np.ndarray]]:
-        """Backward pass.
+        """Compute parameter gradients via back-propagation.
+
+        Assumes the loss gradient ``dloss_dy`` already contains the
+        ``1 / n_samples`` scaling from the loss backward pass.
 
         Args:
-            dloss_dy: Gradient of loss w.r.t. network output,
-                shape (n_samples, n_outputs).
+            dloss_dy: Upstream gradient w.r.t. the network output, shape
+                ``(n_samples, n_outputs)``.
 
         Returns:
-            Dictionary with keys 'weights' and 'biases', each a list
-            of gradients matching the parameter shapes.
+            Dictionary with two keys:
+
+            * ``"weights"`` -- list of weight-gradient arrays, one per
+              layer, in input-to-output order.
+            * ``"biases"`` -- list of bias-gradient arrays (row vectors).
         """
         grads_w: List[np.ndarray] = []
         grads_b: List[np.ndarray] = []
 
-        # Start from the last layer.
+        # Propagate from the output layer backwards.
         delta = dloss_dy
         for i in reversed(range(self.n_layers)):
             a_prev = self._as[i]
@@ -91,22 +127,32 @@ class FullyConnectedNetwork:
             grads_b.insert(0, db)
 
             if i > 0:
-                # Backprop through linear transformation.
+                # Back-prop through the linear transformation.
                 delta = delta @ self.weights[i].T
-                # Backprop through ReLU.
+                # Back-prop through ReLU: gradient is 0 where pre-activation
+                # was non-positive.
                 z = self._zs[i - 1]
                 delta *= (z > 0.0).astype(delta.dtype)
 
         return {"weights": grads_w, "biases": grads_b}
 
     def get_params(self) -> Dict[str, List[np.ndarray]]:
-        """Return a copy of current parameters."""
+        """Return deep copies of all current parameters.
+
+        Returns:
+            Dictionary with ``"weights"`` and ``"biases"`` lists.
+        """
         return {
             "weights": [w.copy() for w in self.weights],
             "biases": [b.copy() for b in self.biases],
         }
 
     def set_params(self, params: Dict[str, List[np.ndarray]]) -> None:
-        """Set parameters from a dictionary."""
+        """Replace all parameters (deep-copied from *params*).
+
+        Args:
+            params: Dictionary with ``"weights"`` and ``"biases"`` lists
+                matching the network architecture.
+        """
         self.weights = [w.copy() for w in params["weights"]]
         self.biases = [b.copy() for b in params["biases"]]

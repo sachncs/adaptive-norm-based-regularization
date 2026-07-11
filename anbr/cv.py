@@ -1,6 +1,18 @@
-"""Cross-validation and hyperparameter grid search utilities."""
+"""Cross-validation and hyperparameter grid search utilities.
 
-from typing import Any, Callable, Dict, List, Optional, Tuple
+Provides helpers for building regulariser instances from method names
+and hyperparameter dictionaries, and for running exhaustive k-fold
+cross-validation over a parameter grid.
+
+Typical workflow
+----------------
+1. Build a list of candidate hyperparameter dictionaries.
+2. Call :func:`grid_search_cv` which internally instantiates fresh
+   networks, regularisers, and optimisers for each fold and each grid
+   point, returning the best configuration.
+"""
+
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from sklearn.model_selection import KFold
@@ -28,17 +40,25 @@ def build_regularizer(
     x_train: np.ndarray,
     delta: float = 1e-4,
 ) -> Regularizer:
-    """Instantiate a regularizer from method name and hyperparameters.
+    """Instantiate a regulariser from a method name and hyperparameters.
+
+    For geometry-aware methods (``"covridge"``, ``"sparridge"``) the
+    stabilised Gram matrix ``C_{delta,n}`` is computed from *x_train*
+    and passed to the constructor.
 
     Args:
-        method: One of 'none', 'ridge', 'lasso', 'elastic_net',
-            'covridge', 'sparridge'.
-        hp: Hyperparameter dict (e.g., {'lambda_': 0.01}).
-        x_train: Training features used to compute C_{δ,n}.
-        delta: Stabilization constant for Gram matrix.
+        method: One of ``"none"``, ``"ridge"``, ``"lasso"``,
+            ``"elastic_net"``, ``"covridge"``, ``"sparridge"``.
+        hp: Hyperparameter dictionary.  Expected keys depend on *method*
+            (e.g. ``{"lambda_": 0.01}`` for ridge).
+        x_train: Training features used to compute ``C_{delta,n}``.
+        delta: Diagonal stabilisation constant (default ``1e-4``).
 
     Returns:
-        Regularizer instance.
+        A :class:`~anbr.regularizers.Regularizer` instance.
+
+    Raises:
+        ValueError: If *method* is not recognised.
     """
     if method == "none":
         return NoRegularizer()
@@ -49,6 +69,7 @@ def build_regularizer(
     if method == "elastic_net":
         return ElasticNet(alpha=hp["alpha"], gamma=hp["gamma"])
 
+    # Geometry-aware regularisers need the empirical Gram matrix.
     n, p = x_train.shape
     c_n = (x_train.T @ x_train) / n
     c_delta_n = c_n + delta * np.eye(p)
@@ -58,7 +79,9 @@ def build_regularizer(
             lambda1=hp["lambda1"], lambda2=hp["lambda2"], c_delta_n=c_delta_n
         )
     if method == "sparridge":
-        return Sparridge(lambda1=hp["lambda1"], gamma=hp["gamma"], c_delta_n=c_delta_n)
+        return Sparridge(
+            lambda1=hp["lambda1"], gamma=hp["gamma"], c_delta_n=c_delta_n
+        )
     raise ValueError(f"Unknown method: {method}")
 
 
@@ -78,28 +101,34 @@ def grid_search_cv(
     task: str = "regression",
     random_state: Optional[int] = None,
 ) -> Tuple[Dict[str, float], float]:
-    """Run k-fold CV over a hyperparameter grid.
+    """Run k-fold cross-validation over a hyperparameter grid.
+
+    Each combination in *param_grid* is evaluated on *n_splits* folds.
+    A fresh network, regulariser, and optimiser are created per fold to
+    avoid state leakage.
 
     Args:
-        x: Features.
-        y: Targets.
-        layer_sizes: Network architecture.
-        method: Regularization method name.
-        param_grid: List of hyperparameter dicts to evaluate.
-        loss_fn: Loss function.
-        n_splits: Number of CV folds.
-        batch_size: Mini-batch size.
-        epochs: Training epochs.
-        learning_rate: Adam learning rate.
-        early_stopping: Enable early stopping.
-        patience: Early stopping patience.
-        task: 'regression' or 'classification'.
-        random_state: RNG seed for KFold.
+        x: Feature matrix of shape ``(n, p)``.
+        y: Target array of shape ``(n, 1)`` (regression) or ``(n,)``
+            (classification).
+        layer_sizes: Network architecture widths including input and
+            output.
+        method: Regularisation method name (see :func:`build_regularizer`).
+        param_grid: List of hyperparameter dictionaries to evaluate.
+        loss_fn: Loss function instance.
+        n_splits: Number of CV folds (default ``5``).
+        batch_size: Mini-batch size (default ``32``).
+        epochs: Training epochs per fold (default ``500``).
+        learning_rate: Adam step size (default ``1e-3``).
+        early_stopping: Enable early stopping within each fold.
+        patience: Early-stopping patience (default ``10``).
+        task: ``"regression"`` or ``"classification"``.
+        random_state: Seed for the ``KFold`` splitter.
 
     Returns:
-        Tuple of (best_params, best_score).
-        For regression best_score is negative MSE (higher is better);
-        for classification it is balanced accuracy.
+        ``(best_params, best_score)`` where *best_score* is negative MSE
+        (higher is better) for regression or balanced accuracy for
+        classification.
     """
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
     best_score = -float("inf")
@@ -111,6 +140,7 @@ def grid_search_cv(
             x_train_fold, x_val_fold = x[train_idx], x[val_idx]
             y_train_fold, y_val_fold = y[train_idx], y[val_idx]
 
+            # Standardise within each fold to prevent leakage.
             scaler = StandardScaler()
             x_train_fold = scaler.fit_transform(x_train_fold)
             x_val_fold = scaler.transform(x_val_fold)

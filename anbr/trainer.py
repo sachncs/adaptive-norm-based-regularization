@@ -1,19 +1,44 @@
-"""Training loop with mini-batching, early stopping, and standardization."""
+"""Training loop with mini-batching, early stopping, and standardization.
 
-from typing import Any, Dict, List, Optional, Tuple
+The :class:`Trainer` class orchestrates the epoch-level training loop,
+including:
+
+* Mini-batch sampling with per-epoch shuffling.
+* Forward pass, loss computation, and regulariser penalty.
+* Back-propagation and parameter update via :class:`~anbr.optimizer.Adam`.
+* Optional validation loss tracking and early stopping.
+* Verbose progress printing.
+
+Covridge / Sparridge layer handling
+------------------------------------
+:class:`~anbr.regularizers.Covridge` and :class:`~anbr.regularizers.Sparridge`
+are applied **only to the first weight matrix** because the empirical Gram
+matrix ``C_{delta,n}`` is defined over the input dimension and therefore
+only matches ``W^{(1)}``.  All other regularizers are applied to every
+weight matrix.
+"""
+
+from typing import Dict, List, Optional
 
 import numpy as np
-from sklearn.preprocessing import StandardScaler
 
 import anbr.losses as losses
-import anbr.metrics as metrics
 from anbr.network import FullyConnectedNetwork
 from anbr.optimizer import Adam
 from anbr.regularizers import Covridge, Regularizer, Sparridge
 
 
 class Trainer:
-    """Trainer for the manual NumPy network."""
+    """End-to-end trainer for the manual NumPy network.
+
+    Ties together a :class:`~anbr.network.FullyConnectedNetwork`, a loss
+    function, a regulariser, and an :class:`~anbr.optimizer.Adam`
+    optimiser into a single :meth:`fit` / :meth:`predict` interface.
+
+    Attributes:
+        history: Dictionary with ``"train_loss"`` and ``"val_loss"`` lists
+            populated during :meth:`fit`.
+    """
 
     def __init__(
         self,
@@ -27,18 +52,19 @@ class Trainer:
         patience: int = 10,
         verbose: bool = False,
     ) -> None:
-        """Initialize trainer.
+        """Initialise the trainer with all component objects.
 
         Args:
             network: The network to train.
-            loss_fn: Loss function with forward/backward.
-            regularizer: Regularizer applied to all weight matrices.
-            optimizer: Optimizer instance.
-            batch_size: Mini-batch size.
-            epochs: Number of training epochs.
-            early_stopping: Whether to stop when validation loss plateaus.
-            patience: Epochs to wait for improvement before stopping.
-            verbose: Print progress.
+            loss_fn: Loss function with ``forward`` / ``backward`` methods.
+            regularizer: Regulariser applied to weight matrices.
+            optimizer: Adam optimiser instance.
+            batch_size: Mini-batch size (default ``32``).
+            epochs: Maximum number of training epochs (default ``500``).
+            early_stopping: Enable early stopping on validation loss.
+            patience: Number of epochs without improvement before
+                stopping (default ``10``).
+            verbose: Print progress every 50 epochs.
         """
         self.network = network
         self.loss_fn = loss_fn
@@ -61,11 +87,17 @@ class Trainer:
         x_val: Optional[np.ndarray] = None,
         y_val: Optional[np.ndarray] = None,
     ) -> None:
-        """Fit the model.
+        """Train the network on *x_train* with optional validation.
+
+        The training loop shuffles the data each epoch, iterates over
+        mini-batches, and updates parameters via the optimizer.  When
+        ``early_stopping`` is enabled and validation data is provided,
+        the best parameters (lowest validation loss) are restored at the
+        end of training.
 
         Args:
-            x_train: Training inputs.
-            y_train: Training targets.
+            x_train: Training inputs of shape ``(n, p)``.
+            y_train: Training targets of shape ``(n, 1)`` or ``(n,)``.
             x_val: Validation inputs (optional).
             y_val: Validation targets (optional).
         """
@@ -75,7 +107,7 @@ class Trainer:
         best_params: Optional[Dict[str, List[np.ndarray]]] = None
 
         for epoch in range(self.epochs):
-            # Shuffle indices each epoch.
+            # Shuffle indices each epoch for stochasticity.
             indices = np.random.permutation(n_samples)
             epoch_losses: List[float] = []
             for start in range(0, n_samples, self.batch_size):
@@ -84,28 +116,31 @@ class Trainer:
                 x_batch = x_train[batch_idx]
                 y_batch = y_train[batch_idx]
 
-                # Forward.
+                # Forward pass and loss.
                 y_pred = self.network.forward(x_batch)
                 loss = self.loss_fn.forward(y_pred, y_batch)
 
-                # Regularization penalty.
+                # Regularisation penalty.
                 # NOTE: Covridge and Sparridge are applied only to the first
-                # layer because C_{δ,n} is computed from the input dimension.
-                # This is an assumption not explicitly stated in the paper.
+                # layer because C_{delta,n} is computed from the input
+                # dimension.  This is an assumption not explicitly stated
+                # in the paper.
                 reg_penalty = 0.0
                 if isinstance(self.regularizer, (Covridge, Sparridge)):
-                    reg_penalty += self.regularizer.penalty(self.network.weights[0])
+                    reg_penalty += self.regularizer.penalty(
+                        self.network.weights[0]
+                    )
                 else:
                     for w in self.network.weights:
                         reg_penalty += self.regularizer.penalty(w)
                 total_loss = loss + reg_penalty
                 epoch_losses.append(total_loss)
 
-                # Backward.
+                # Backward pass.
                 dloss = self.loss_fn.backward(y_pred, y_batch)
                 grads = self.network.backward(dloss)
 
-                # Add regularizer gradients.
+                # Add regulariser gradients.
                 if isinstance(self.regularizer, (Covridge, Sparridge)):
                     grads["weights"][0] += self.regularizer.gradient(
                         self.network.weights[0]
@@ -125,17 +160,20 @@ class Trainer:
             avg_train_loss = float(np.mean(epoch_losses))
             self.history["train_loss"].append(avg_train_loss)
 
-            # Validation.
+            # Validation evaluation.
             if x_val is not None and y_val is not None:
                 val_pred = self.network.forward(x_val)
                 val_loss = self.loss_fn.forward(val_pred, y_val)
                 if isinstance(self.regularizer, (Covridge, Sparridge)):
-                    val_loss += self.regularizer.penalty(self.network.weights[0])
+                    val_loss += self.regularizer.penalty(
+                        self.network.weights[0]
+                    )
                 else:
                     for w in self.network.weights:
                         val_loss += self.regularizer.penalty(w)
                 self.history["val_loss"].append(float(val_loss))
 
+                # Early stopping logic.
                 if self.early_stopping:
                     if val_loss < best_val_loss:
                         best_val_loss = val_loss
@@ -151,18 +189,20 @@ class Trainer:
                             break
 
             if self.verbose and (epoch + 1) % 50 == 0:
-                msg = f"Epoch {epoch + 1}/{self.epochs} — train loss: {avg_train_loss:.4f}"
+                msg = f"Epoch {epoch + 1}/{self.epochs} -- train loss: {avg_train_loss:.4f}"
                 if x_val is not None:
                     msg += f", val loss: {self.history['val_loss'][-1]:.4f}"
                 print(msg)
 
     def predict(self, x: np.ndarray) -> np.ndarray:
-        """Generate predictions.
+        """Generate predictions for the given input.
+
+        Runs a single forward pass through the network.
 
         Args:
-            x: Input array.
+            x: Input array of shape ``(n_samples, n_features)``.
 
         Returns:
-            Predictions.
+            Network output of shape ``(n_samples, n_outputs)``.
         """
         return self.network.forward(x)

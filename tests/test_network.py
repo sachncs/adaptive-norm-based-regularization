@@ -1,7 +1,6 @@
 """Comprehensive tests for network forward pass, backward pass, and gradient checks."""
 
 import numpy as np
-import pytest
 
 from anbr.network import FullyConnectedNetwork
 

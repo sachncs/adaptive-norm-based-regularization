@@ -5,7 +5,7 @@ from sklearn.preprocessing import StandardScaler
 
 import anbr.losses as losses
 import anbr.metrics as metrics
-from anbr.cv import build_regularizer, grid_search_cv
+from anbr.cv import grid_search_cv
 from anbr.network import FullyConnectedNetwork
 from anbr.optimizer import Adam
 from anbr.regularizers import (
@@ -29,7 +29,9 @@ def test_train_regression_decreases_loss():
     net = FullyConnectedNetwork([5, 8, 1])
     opt = Adam(learning_rate=1e-2)
     reg = Ridge(lambda_=1e-4)
-    trainer = Trainer(net, losses.MSELoss(), reg, opt, batch_size=16, epochs=100)
+    trainer = Trainer(
+        net, losses.MSELoss(), reg, opt, batch_size=16, epochs=100
+    )
     trainer.fit(x, y)
     final_loss = trainer.history["train_loss"][-1]
     initial_loss = trainer.history["train_loss"][0]
@@ -96,7 +98,9 @@ def test_train_with_each_regularizer():
     for reg in regularizers:
         net = FullyConnectedNetwork([4, 4, 1])
         opt = Adam(learning_rate=1e-2)
-        trainer = Trainer(net, losses.MSELoss(), reg, opt, batch_size=16, epochs=20)
+        trainer = Trainer(
+            net, losses.MSELoss(), reg, opt, batch_size=16, epochs=20
+        )
         trainer.fit(x, y)
         assert len(trainer.history["train_loss"]) == 20
 
