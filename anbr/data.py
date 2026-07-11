@@ -126,7 +126,7 @@ def make_dgp(
         y = np.sum(theta * np.sin(x_informative), axis=1)
     else:
         # Linear signal: y = X_info @ theta.
-        y = x_informative @ theta
+        y = np.ravel(x_informative @ theta)
     # Additive Gaussian noise.
     y += rng.normal(0.0, sigma_noise, size=n)
     return x, y.reshape(-1, 1)
