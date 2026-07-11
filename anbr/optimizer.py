@@ -7,6 +7,11 @@ explicit :meth:`reset` for re-training from scratch.
 The optimizer operates on dictionaries of parameter lists (matching the
 format returned by :meth:`~anbr.network.FullyConnectedNetwork.get_params`)
 so it is agnostic to network architecture.
+
+References
+----------
+Kingma, D. P. & Ba, J. (2014).  "Adam: A Method for Stochastic
+Optimization."  *ICLR 2015*.  arXiv:1412.6980.
 """
 
 from typing import Dict, List, Optional
@@ -28,6 +33,9 @@ class Adam:
         \theta_t   &= \theta_{t-1} - \eta \, \hat{m}_t /
                        (\sqrt{\hat{v}_t} + \epsilon)
 
+    Default hyperparameters (``lr=1e-3``, ``beta1=0.9``, ``beta2=0.999``,
+    ``eps=1e-8``) match the original paper.
+
     Attributes:
         learning_rate: Step size ``eta``.
         beta1: Exponential decay rate for the first moment.
@@ -35,6 +43,11 @@ class Adam:
         epsilon: Small constant added to the denominator for numerical
             stability.
         t: Internal step counter (incremented on each :meth:`step` call).
+
+    Thread safety
+    -------------
+    The optimizer maintains mutable internal state (``_m``, ``_v``, ``t``).
+    It is **not** safe to call :meth:`step` concurrently.
     """
 
     def __init__(
@@ -65,11 +78,22 @@ class Adam:
         params: Dict[str, List[np.ndarray]],
         grads: Dict[str, List[np.ndarray]],
     ) -> Dict[str, List[np.ndarray]]:
-        """Perform one Adam update in place and return new parameters.
+        """Perform one Adam update and return new parameters.
 
         First-time parameters are initialised to zero moments.  The step
         counter ``t`` is incremented *before* the bias correction is
-        computed so that ``t = 1`` on the very first call.
+        computed so that ``t = 1`` on the very first call.  This means
+        the first step uses ``m_hat = m / (1 - beta1)`` and
+        ``v_hat = v / (1 - beta2)``, which is correct per the paper.
+
+        Side effects
+        ------------
+        Mutates ``self.t``, ``self._m``, and ``self._v``.  The input
+        ``params`` and ``grads`` dictionaries are **not** modified.
+
+        Complexity
+        ----------
+        O(sum of all parameter sizes) -- one pass over every element.
 
         Args:
             params: Current parameter arrays keyed by group name
@@ -92,18 +116,19 @@ class Adam:
                 self._v[key].append(None)
             for i, (p, g) in enumerate(zip(params[key], grads[key])):
                 if self._m[key][i] is None:
+                    # Lazy initialization: first call for this parameter.
                     self._m[key][i] = np.zeros_like(p)
                     self._v[key][i] = np.zeros_like(p)
                 m = self._m[key][i]
                 v = self._v[key][i]
                 assert m is not None
                 assert v is not None
-                # Update biased moments.
+                # Update biased moments (exponential moving averages).
                 m = self.beta1 * m + (1.0 - self.beta1) * g
                 v = self.beta2 * v + (1.0 - self.beta2) * (g**2)
                 self._m[key][i] = m
                 self._v[key][i] = v
-                # Bias-corrected estimates.
+                # Bias-corrected estimates: compensate for zero-initialization.
                 m_hat = m / (1.0 - self.beta1**self.t)
                 v_hat = v / (1.0 - self.beta2**self.t)
                 p_new = p - self.learning_rate * m_hat / (
@@ -116,7 +141,9 @@ class Adam:
         """Reset all internal state to the initial condition.
 
         Clears the step counter and all moment buffers so the optimizer
-        can be reused for a fresh training run.
+        can be reused for a fresh training run.  This is useful for
+        re-training from scratch without creating a new optimizer
+        instance.
         """
         self.t = 0
         self._m = {}

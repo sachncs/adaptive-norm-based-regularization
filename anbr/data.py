@@ -1,4 +1,4 @@
-"""Data generators for simulations and real-data loaders.
+r"""Data generators for simulations and real-data loaders.
 
 Provides synthetic data-generating processes (DGPs) that mirror the
 experimental setup of the paper, plus loaders for the two real-world
@@ -6,6 +6,22 @@ datasets used in the study.
 
 Synthetic DGPs
 --------------
+All DGPs share a common mathematical model:
+
+.. math::
+
+    X_{\\text{info}} &\\sim \\mathcal{N}(0, \\Sigma_k) \\quad
+        \\text{where } \\Sigma_k = (1-\\rho)I_k + \\rho \\mathbf{1}\\mathbf{1}^T
+    \\\\
+    X_{\\text{noise}} &\\sim \\mathcal{N}(0, I_{p-k})
+    \\\\
+    \\theta &\\sim \\mathcal{N}(0, \\tau I_k)
+    \\\\
+    y &= X_{\\text{info}} \\theta + \\varepsilon
+        \\quad\\text{(or } \\sin(X_{\\text{info}}) \\theta + \\varepsilon\\text{)}
+
+where ``epsilon ~ N(0, sigma_noise^2 I)``.
+
 * :func:`make_dgp` -- generic generator with configurable ``n``, ``p``,
   ``k``, correlation ``rho``, noise level, and linear/nonlinear signal.
 * :func:`make_dgp1` -- ``n=200, p=20, k=10`` (small).
@@ -19,7 +35,8 @@ Real-data loaders
   feature selection.
 
 All loaders return ``(X_train, X_test, y_train, y_test, scaler)`` tuples
-with standardised features.
+with standardised features.  Standardisation is fit on the training split
+only to prevent data leakage.
 """
 
 from typing import Optional, Tuple
@@ -35,11 +52,15 @@ def _make_covariance_matrix(k: int, rho: float) -> np.ndarray:
     """Build a ``k x k`` equi-correlation covariance matrix.
 
     The diagonal is ``1`` and every off-diagonal entry is ``rho``.
+    This is the equi-correlation (compound symmetry) structure used in
+    the paper's DGP to introduce controlled multicollinearity among
+    informative features.
 
     Args:
         k: Dimension of the matrix.
-        rho: Off-diagonal correlation value (``|rho| < 1`` for a valid
-            covariance).
+        rho: Off-diagonal correlation value.  For a valid positive-
+            definite covariance, ``|rho| < 1`` is required.  The caller
+            is responsible for validation.
 
     Returns:
         Covariance matrix of shape ``(k, k)``.
@@ -66,6 +87,10 @@ def make_dgp(
     standard normal (pure noise).  True coefficients are drawn from
     ``N(0, tau)`` and the response is either linear or sinusoidal.
 
+    The signal-to-noise ratio is controlled by ``tau`` and
+    ``sigma_noise``: larger ``tau`` relative to ``sigma_noise`` produces
+    a stronger signal.
+
     Args:
         n: Number of samples.
         p: Total number of features.
@@ -73,14 +98,15 @@ def make_dgp(
         rho: Pairwise correlation among informative features.
         sigma_noise: Standard deviation of additive Gaussian noise.
         tau: Standard deviation of the true coefficient vector.
-        nonlinear: If ``True``, use ``sin(X) @ theta`` instead of ``X @ theta``.
+        nonlinear: If ``True``, use ``sin(X) @ theta`` instead of
+            ``X @ theta``.
         random_state: Seed for the NumPy default RNG.
 
     Returns:
         ``(X, y)`` with shapes ``(n, p)`` and ``(n, 1)``.
     """
     rng = np.random.default_rng(random_state)
-    # Informative block with equi-correlation.
+    # Informative block with equi-correlation structure.
     if k > 0:
         cov = _make_covariance_matrix(k, rho)
         x_informative = rng.multivariate_normal(
@@ -88,7 +114,7 @@ def make_dgp(
         )
     else:
         x_informative = np.empty((n, 0))
-    # Noise features (i.i.d. standard normal).
+    # Noise features: i.i.d. standard normal, uncorrelated with signal.
     x_noise = rng.standard_normal(size=(n, p - k))
     x = np.hstack([x_informative, x_noise])
     # True coefficients.
@@ -96,9 +122,12 @@ def make_dgp(
     if k == 0:
         y = np.zeros(n)
     elif nonlinear:
+        # Sinusoidal signal: y = sum(theta_j * sin(x_j)).
         y = np.sum(theta * np.sin(x_informative), axis=1)
     else:
+        # Linear signal: y = X_info @ theta.
         y = x_informative @ theta
+    # Additive Gaussian noise.
     y += rng.normal(0.0, sigma_noise, size=n)
     return x, y.reshape(-1, 1)
 
@@ -110,6 +139,9 @@ def make_dgp1(
     random_state: Optional[int] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """DGP1: small-scale with ``n=200, p=20, k=10``.
+
+    This is the baseline scenario in Table 1 of the paper.  Half of the
+    features are informative and correlated; the other half are noise.
 
     Args:
         rho: Correlation among informative features.
@@ -139,6 +171,9 @@ def make_dgp2(
 ) -> Tuple[np.ndarray, np.ndarray]:
     """DGP2: medium-scale with ``n=1000, p=200, k=100``.
 
+    Tests the regularizers in a higher-dimensional setting where
+    ``p > n`` is not yet true but the feature space is large.
+
     Args:
         rho: Correlation among informative features.
         sigma_noise: Noise standard deviation.
@@ -167,6 +202,9 @@ def make_dgp3(
 ) -> Tuple[np.ndarray, np.ndarray]:
     """DGP3: high-dimensional with ``n=500, p=2000, k=100``.
 
+    The ``p >> n`` regime where regularization is critical.  Only 5%
+    of features are informative.
+
     Args:
         rho: Correlation among informative features.
         sigma_noise: Noise standard deviation.
@@ -193,8 +231,13 @@ def load_energy_data(
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, StandardScaler]:
     """Load the UCI Energy Efficiency dataset (cooling load target ``y2``).
 
+    The dataset has 8 features (relative compactness, surface area, wall
+    area, roof area, overall height, orientation, glazing area, glazing
+    area distribution) and 2 targets (heating load ``y1``, cooling load
+    ``y2``).  We use ``y2`` as in the paper.
+
     Features are standardised using :class:`StandardScaler` fit on the
-    training split.
+    training split only, to prevent information leakage from the test set.
 
     Args:
         test_size: Fraction of samples reserved for the test set.
@@ -225,9 +268,13 @@ def load_leukemia_data(
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, StandardScaler]:
     """Load the GSE9476 leukemia microarray dataset.
 
-    ANOVA feature selection reduces the feature space to the top
-    *n_features* most discriminative probes.  Features are then
+    ANOVA feature selection (``f_classif``) reduces the feature space to
+    the top *n_features* most discriminative probes.  Features are then
     standardised on the training split.
+
+    The train/test split uses stratification (``stratify=y``) to preserve
+    class proportions, which is important for the imbalanced classes in
+    this dataset.
 
     Args:
         n_features: Number of features to keep via ANOVA F-test.
@@ -241,7 +288,6 @@ def load_leukemia_data(
         RuntimeError: If the dataset cannot be fetched from OpenML.
     """
     # Attempt to fetch from OpenML (GSE9476 surrogate).
-    # If unavailable, raise with instructions.
     try:
         data = fetch_openml(data_id=1120, as_frame=True, parser="auto")
     except Exception as exc:
@@ -254,10 +300,11 @@ def load_leukemia_data(
     x = df.drop(columns=data.target_names).astype(float).to_numpy()
     le = LabelEncoder()
     y = le.fit_transform(y_raw)
-    # ANOVA feature selection to top n_features.
+    # ANOVA feature selection: keep the n_features with highest F-values.
     f_values, _ = f_classif(x, y)
     top_idx = np.argsort(f_values)[-n_features:]
     x = x[:, top_idx]
+    # Stratified split to preserve class balance.
     x_train, x_test, y_train, y_test = train_test_split(
         x, y, test_size=test_size, random_state=random_state, stratify=y
     )

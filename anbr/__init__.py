@@ -24,6 +24,8 @@ Modules
 regularizers
     Abstract :class:`~anbr.regularizers.Regularizer` and concrete penalties
     (Ridge, Lasso, ElasticNet, Covridge, Sparridge, plus a no-op baseline).
+    Covridge and Sparridge use a precomputed matrix square root of the
+    empirical Gram matrix ``C_{delta,n}`` via symmetric eigendecomposition.
 losses
     :class:`~anbr.losses.MSELoss` and :class:`~anbr.losses.CrossEntropyLoss`
     with analytical backward passes.  The ``1 / n_samples`` scaling lives
@@ -39,15 +41,16 @@ data
     Synthetic data generators (``make_dgp``, ``make_dgp1/2/3``) and real-data
     loaders for the UCI Energy Efficiency and GSE9476 leukemia datasets.
 metrics
-    Pure-NumPy regression and classification metrics (MSE, MAE, RMSE, R-squared,
-    balanced accuracy).  No sklearn dependency at runtime.
+    Pure-NumPy regression and classification metrics (MSE, MAE, RMSE,
+    R-squared, balanced accuracy).  No sklearn dependency at runtime.
 trainer
     :class:`~anbr.trainer.Trainer` -- mini-batch epoch loop that stitches
     the network, loss, regularizer, and optimizer together; supports
     validation, history tracking, and early stopping.
 cv
-    :func:`~anbr.cv.build_regularizer` factory and :func:`~anbr.cv.grid_search_cv`
-    driver for k-fold cross-validation over hyperparameter grids.
+    :func:`~anbr.cv.build_regularizer` factory and
+    :func:`~anbr.cv.grid_search_cv` driver for k-fold cross-validation
+    over hyperparameter grids.
 
 Design rationale
 ----------------

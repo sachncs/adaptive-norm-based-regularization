@@ -1,15 +1,29 @@
 """Cross-validation and hyperparameter grid search utilities.
 
-Provides helpers for building regulariser instances from method names
+Provides helpers for building regularizer instances from method names
 and hyperparameter dictionaries, and for running exhaustive k-fold
 cross-validation over a parameter grid.
+
+Data leakage prevention
+-----------------------
+Each fold standardizes features independently using
+:class:`sklearn.preprocessing.StandardScaler` fit on the training
+partition only.  This prevents information leakage from the validation
+set into the training process.
 
 Typical workflow
 ----------------
 1. Build a list of candidate hyperparameter dictionaries.
 2. Call :func:`grid_search_cv` which internally instantiates fresh
-   networks, regularisers, and optimisers for each fold and each grid
+   networks, regularizers, and optimizers for each fold and each grid
    point, returning the best configuration.
+
+Performance note
+----------------
+``grid_search_cv`` is compute-intensive: it trains ``len(param_grid) *
+n_splits`` independent models.  For the paper's grid of 5 values with
+Covridge/Sparridge (25 combinations), this means 125 model fits per
+CV run.  Consider reducing ``epochs`` or ``n_splits`` during development.
 """
 
 from typing import Dict, List, Optional, Tuple
@@ -33,6 +47,16 @@ from anbr.regularizers import (
 )
 from anbr.trainer import Trainer
 
+# Expected hyperparameter keys for each regularizer method.
+_METHOD_HP_KEYS: Dict[str, List[str]] = {
+    "none": [],
+    "ridge": ["lambda_"],
+    "lasso": ["gamma"],
+    "elastic_net": ["alpha", "gamma"],
+    "covridge": ["lambda1", "lambda2"],
+    "sparridge": ["lambda1", "gamma"],
+}
+
 
 def build_regularizer(
     method: str,
@@ -40,19 +64,35 @@ def build_regularizer(
     x_train: np.ndarray,
     delta: float = 1e-4,
 ) -> Regularizer:
-    """Instantiate a regulariser from a method name and hyperparameters.
+    r"""Instantiate a regularizer from a method name and hyperparameters.
 
     For geometry-aware methods (``"covridge"``, ``"sparridge"``) the
-    stabilised Gram matrix ``C_{delta,n}`` is computed from *x_train*
-    and passed to the constructor.
+    stabilized Gram matrix ``C_{delta,n}`` is computed from *x_train*
+    and passed to the constructor.  The Gram matrix is:
+
+    .. math::
+
+        C_{\\delta,n} = \\frac{1}{n} X^T X + \\delta I_p
+
+    where ``n = x_train.shape[0]`` and ``p = x_train.shape[1]``.
 
     Args:
         method: One of ``"none"``, ``"ridge"``, ``"lasso"``,
             ``"elastic_net"``, ``"covridge"``, ``"sparridge"``.
-        hp: Hyperparameter dictionary.  Expected keys depend on *method*
-            (e.g. ``{"lambda_": 0.01}`` for ridge).
+        hp: Hyperparameter dictionary.  Expected keys depend on *method*:
+
+            * ``"none"``: empty dict.
+            * ``"ridge"``: ``{"lambda_": float}``.
+            * ``"lasso"``: ``{"gamma": float}``.
+            * ``"elastic_net"``: ``{"alpha": float, "gamma": float}``.
+            * ``"covridge"``: ``{"lambda1": float, "lambda2": float}``.
+            * ``"sparridge"``: ``{"lambda1": float, "gamma": float}``.
+
         x_train: Training features used to compute ``C_{delta,n}``.
-        delta: Diagonal stabilisation constant (default ``1e-4``).
+            Shape ``(n, p)``.  Ignored for non-geometry-aware methods.
+        delta: Diagonal stabilization constant (default ``1e-4``).
+            Larger values make the Gram matrix better-conditioned but
+            reduce the geometry-awareness of Covridge/Sparridge.
 
     Returns:
         A :class:`~anbr.regularizers.Regularizer` instance.
@@ -69,7 +109,7 @@ def build_regularizer(
     if method == "elastic_net":
         return ElasticNet(alpha=hp["alpha"], gamma=hp["gamma"])
 
-    # Geometry-aware regularisers need the empirical Gram matrix.
+    # Geometry-aware regularizers need the empirical Gram matrix.
     n, p = x_train.shape
     c_n = (x_train.T @ x_train) / n
     c_delta_n = c_n + delta * np.eye(p)
@@ -104,8 +144,14 @@ def grid_search_cv(
     """Run k-fold cross-validation over a hyperparameter grid.
 
     Each combination in *param_grid* is evaluated on *n_splits* folds.
-    A fresh network, regulariser, and optimiser are created per fold to
+    A fresh network, regularizer, and optimizer are created per fold to
     avoid state leakage.
+
+    The scoring metric depends on *task*:
+
+    * ``"regression"``: negative MSE (higher is better, matches sklearn
+      convention).
+    * ``"classification"``: balanced accuracy (higher is better).
 
     Args:
         x: Feature matrix of shape ``(n, p)``.
@@ -113,7 +159,7 @@ def grid_search_cv(
             (classification).
         layer_sizes: Network architecture widths including input and
             output.
-        method: Regularisation method name (see :func:`build_regularizer`).
+        method: Regularization method name (see :func:`build_regularizer`).
         param_grid: List of hyperparameter dictionaries to evaluate.
         loss_fn: Loss function instance.
         n_splits: Number of CV folds (default ``5``).
@@ -129,6 +175,10 @@ def grid_search_cv(
         ``(best_params, best_score)`` where *best_score* is negative MSE
         (higher is better) for regression or balanced accuracy for
         classification.
+
+    Raises:
+        ValueError: If *task* is not ``"regression"`` or
+            ``"classification"``.
     """
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
     best_score = -float("inf")
@@ -140,7 +190,7 @@ def grid_search_cv(
             x_train_fold, x_val_fold = x[train_idx], x[val_idx]
             y_train_fold, y_val_fold = y[train_idx], y[val_idx]
 
-            # Standardise within each fold to prevent leakage.
+            # Standardize within each fold to prevent leakage.
             scaler = StandardScaler()
             x_train_fold = scaler.fit_transform(x_train_fold)
             x_val_fold = scaler.transform(x_val_fold)
