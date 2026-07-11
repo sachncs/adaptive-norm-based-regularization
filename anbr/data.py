@@ -1,4 +1,26 @@
-"""Data generators for simulations and real-data loaders."""
+"""Data generators for simulations and real-data loaders.
+
+Provides synthetic data-generating processes (DGPs) that mirror the
+experimental setup of the paper, plus loaders for the two real-world
+datasets used in the study.
+
+Synthetic DGPs
+--------------
+* :func:`make_dgp` -- generic generator with configurable ``n``, ``p``,
+  ``k``, correlation ``rho``, noise level, and linear/nonlinear signal.
+* :func:`make_dgp1` -- ``n=200, p=20, k=10`` (small).
+* :func:`make_dgp2` -- ``n=1000, p=200, k=100`` (medium).
+* :func:`make_dgp3` -- ``n=500, p=2000, k=100`` (high-dimensional).
+
+Real-data loaders
+-----------------
+* :func:`load_energy_data` -- UCI Energy Efficiency (cooling load).
+* :func:`load_leukemia_data` -- GSE9476 leukemia microarray with ANOVA
+  feature selection.
+
+All loaders return ``(X_train, X_test, y_train, y_test, scaler)`` tuples
+with standardised features.
+"""
 
 from typing import Optional, Tuple
 
@@ -10,7 +32,18 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler
 
 
 def _make_covariance_matrix(k: int, rho: float) -> np.ndarray:
-    """Create a k×k covariance with 1 on diagonal and rho off-diagonal."""
+    """Build a ``k x k`` equi-correlation covariance matrix.
+
+    The diagonal is ``1`` and every off-diagonal entry is ``rho``.
+
+    Args:
+        k: Dimension of the matrix.
+        rho: Off-diagonal correlation value (``|rho| < 1`` for a valid
+            covariance).
+
+    Returns:
+        Covariance matrix of shape ``(k, k)``.
+    """
     sigma = np.full((k, k), rho)
     np.fill_diagonal(sigma, 1.0)
     return sigma
@@ -28,30 +61,37 @@ def make_dgp(
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Generate synthetic data according to the paper's DGP.
 
+    The first ``k`` features are drawn from a multivariate normal with
+    equi-correlation ``rho``; the remaining ``p - k`` features are i.i.d.
+    standard normal (pure noise).  True coefficients are drawn from
+    ``N(0, tau)`` and the response is either linear or sinusoidal.
+
     Args:
         n: Number of samples.
-        p: Number of features.
-        k: Number of informative features.
-        rho: Correlation among informative features.
+        p: Total number of features.
+        k: Number of informative (correlated) features.
+        rho: Pairwise correlation among informative features.
         sigma_noise: Standard deviation of additive Gaussian noise.
-        tau: Standard deviation of true coefficients.
-        nonlinear: If True, use sinusoidal signal.
-        random_state: RNG seed.
+        tau: Standard deviation of the true coefficient vector.
+        nonlinear: If ``True``, use ``sin(X) @ theta`` instead of ``X @ theta``.
+        random_state: Seed for the NumPy default RNG.
 
     Returns:
-        Tuple of (X, y) with shapes (n, p) and (n,) or (n, 1).
+        ``(X, y)`` with shapes ``(n, p)`` and ``(n, 1)``.
     """
     rng = np.random.default_rng(random_state)
-    # Informative block.
+    # Informative block with equi-correlation.
     if k > 0:
         cov = _make_covariance_matrix(k, rho)
-        x_informative = rng.multivariate_normal(mean=np.zeros(k), cov=cov, size=n)
+        x_informative = rng.multivariate_normal(
+            mean=np.zeros(k), cov=cov, size=n
+        )
     else:
         x_informative = np.empty((n, 0))
-    # Noise features.
+    # Noise features (i.i.d. standard normal).
     x_noise = rng.standard_normal(size=(n, p - k))
     x = np.hstack([x_informative, x_noise])
-    # Coefficients.
+    # True coefficients.
     theta = rng.normal(0.0, tau, size=k)
     if k == 0:
         y = np.zeros(n)
@@ -69,9 +109,25 @@ def make_dgp1(
     nonlinear: bool = False,
     random_state: Optional[int] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """DGP1: n=200, p=20, k=10."""
+    """DGP1: small-scale with ``n=200, p=20, k=10``.
+
+    Args:
+        rho: Correlation among informative features.
+        sigma_noise: Noise standard deviation.
+        nonlinear: Use sinusoidal signal.
+        random_state: RNG seed.
+
+    Returns:
+        ``(X, y)`` tuple.
+    """
     return make_dgp(
-        200, 20, 10, rho, sigma_noise, nonlinear=nonlinear, random_state=random_state
+        200,
+        20,
+        10,
+        rho,
+        sigma_noise,
+        nonlinear=nonlinear,
+        random_state=random_state,
     )
 
 
@@ -81,9 +137,25 @@ def make_dgp2(
     nonlinear: bool = False,
     random_state: Optional[int] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """DGP2: n=1000, p=200, k=100."""
+    """DGP2: medium-scale with ``n=1000, p=200, k=100``.
+
+    Args:
+        rho: Correlation among informative features.
+        sigma_noise: Noise standard deviation.
+        nonlinear: Use sinusoidal signal.
+        random_state: RNG seed.
+
+    Returns:
+        ``(X, y)`` tuple.
+    """
     return make_dgp(
-        1000, 200, 100, rho, sigma_noise, nonlinear=nonlinear, random_state=random_state
+        1000,
+        200,
+        100,
+        rho,
+        sigma_noise,
+        nonlinear=nonlinear,
+        random_state=random_state,
     )
 
 
@@ -93,9 +165,25 @@ def make_dgp3(
     nonlinear: bool = False,
     random_state: Optional[int] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """DGP3: n=500, p=2000, k=100."""
+    """DGP3: high-dimensional with ``n=500, p=2000, k=100``.
+
+    Args:
+        rho: Correlation among informative features.
+        sigma_noise: Noise standard deviation.
+        nonlinear: Use sinusoidal signal.
+        random_state: RNG seed.
+
+    Returns:
+        ``(X, y)`` tuple.
+    """
     return make_dgp(
-        500, 2000, 100, rho, sigma_noise, nonlinear=nonlinear, random_state=random_state
+        500,
+        2000,
+        100,
+        rho,
+        sigma_noise,
+        nonlinear=nonlinear,
+        random_state=random_state,
     )
 
 
@@ -103,14 +191,21 @@ def load_energy_data(
     test_size: float = 0.25,
     random_state: Optional[int] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, StandardScaler]:
-    """Load UCI Energy Efficiency dataset (cooling load).
+    """Load the UCI Energy Efficiency dataset (cooling load target ``y2``).
+
+    Features are standardised using :class:`StandardScaler` fit on the
+    training split.
+
+    Args:
+        test_size: Fraction of samples reserved for the test set.
+        random_state: Seed for the train/test split.
 
     Returns:
-        X_train, X_test, y_train, y_test, scaler
+        ``(X_train, X_test, y_train, y_test, scaler)``.
     """
     data = fetch_openml(name="energy-efficiency", as_frame=True, parser="auto")
     df = data.frame
-    # Targets: 'y1' (heating), 'y2' (cooling). We use y2.
+    # Targets: 'y1' (heating), 'y2' (cooling).  We use y2.
     feature_cols = [c for c in df.columns if c not in ("y1", "y2")]
     x = df[feature_cols].astype(float).to_numpy()
     y = df["y2"].astype(float).to_numpy().reshape(-1, 1)
@@ -128,10 +223,22 @@ def load_leukemia_data(
     test_size: float = 0.2,
     random_state: Optional[int] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, StandardScaler]:
-    """Load GSE9476 leukemia microarray data.
+    """Load the GSE9476 leukemia microarray dataset.
+
+    ANOVA feature selection reduces the feature space to the top
+    *n_features* most discriminative probes.  Features are then
+    standardised on the training split.
+
+    Args:
+        n_features: Number of features to keep via ANOVA F-test.
+        test_size: Fraction of samples reserved for the test set.
+        random_state: Seed for the train/test split.
 
     Returns:
-        X_train, X_test, y_train, y_test, scaler
+        ``(X_train, X_test, y_train, y_test, scaler)``.
+
+    Raises:
+        RuntimeError: If the dataset cannot be fetched from OpenML.
     """
     # Attempt to fetch from OpenML (GSE9476 surrogate).
     # If unavailable, raise with instructions.
