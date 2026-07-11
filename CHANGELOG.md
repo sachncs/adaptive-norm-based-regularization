@@ -9,11 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Comprehensive docstrings across all modules, classes, and public methods
-  with Args/Returns/Raises sections, edge-case documentation, and
-  numerical stability notes (`e07df44` — 2026-07-11)
-- Rebuilt README with centered header, Quick Start section, Code Style,
-  and Commit Conventions subsections (`ecb68ad` — 2026-07-11)
+- Comprehensive docstrings across all 9 `anbr/` modules with module,
+  class, and method docstrings including Args/Returns/Raises sections,
+  algorithm explanations, edge-case documentation, paper equation
+  mappings, and numerical stability notes (`7811fb7` — 2026-07-11)
+- Rebuilt README with centered header, badge block, Quick Start
+  (CLI + Python API), Code Style, Commit Conventions, and Tech Stack
+  subsections (`ecb68ad` — 2026-07-11)
 
 ### Changed
 
@@ -23,8 +25,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`468d98b` — 2026-07-11)
 - Applied black formatting to test files for style consistency
   (`2b8316d` — 2026-07-11)
-- Updated CHANGELOG with commit IDs and dates
-  (`9e973b8` — 2026-07-11)
+- Updated CHANGELOG with all commit IDs and dates across v0.1.0,
+  v0.1.1, and Unreleased (`af255b2` — 2026-07-11)
+
+### Fixed
+
+- Corrected GitHub username from `sachn-cs` to `sachncs` across README,
+  CHANGELOG, CONTRIBUTING, pyproject.toml, FUNDING.yml, and
+  getting-started.md (`59ab064` — 2026-07-11)
+- Updated LICENSE copyright holder to `Sachin` (`c73e254` — 2026-07-11)
+- Bumped mypy `python_version` from `"3.10"` to `"3.12"` in
+  pyproject.toml for numpy stub compatibility (`c5712a1` — 2026-07-11)
+- Ensured 1D array type consistency in `data.py` using `np.ravel()`
+  for Python 3.10 mypy compatibility (`8a1836b` — 2026-07-11)
+- Removed stale `.mypy.ini` that overrode pyproject.toml
+  `python_version` setting, causing numpy PEP 695 `type` syntax
+  errors on CI (`221e1d9` — 2026-07-11)
 
 ## [0.1.1] - 2026-06-19
 
