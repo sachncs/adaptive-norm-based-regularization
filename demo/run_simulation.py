@@ -16,7 +16,7 @@ sys.path.insert(0, "..")
 import anbr.losses as losses
 import anbr.metrics as metrics
 from anbr.cv import build_regularizer, grid_search_cv
-from anbr.data import make_dgp1, make_dgp2, make_dgp3
+from anbr.data import make_dgp1, make_dgp2
 from anbr.network import FullyConnectedNetwork
 from anbr.optimizer import Adam
 from anbr.trainer import Trainer
