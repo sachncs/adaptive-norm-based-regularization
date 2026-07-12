@@ -78,30 +78,46 @@ class Adam:
         params: Dict[str, List[np.ndarray]],
         grads: Dict[str, List[np.ndarray]],
     ) -> Dict[str, List[np.ndarray]]:
-        """Perform one Adam update and return new parameters.
+        """Perform one Adam update and return the new parameters.
 
-        First-time parameters are initialised to zero moments.  The step
-        counter ``t`` is incremented *before* the bias correction is
-        computed so that ``t = 1`` on the very first call.  This means
-        the first step uses ``m_hat = m / (1 - beta1)`` and
-        ``v_hat = v / (1 - beta2)``, which is correct per the paper.
+        Lazy moment buffers
+        -------------------
+        On first contact with each parameter array the corresponding
+        ``m`` and ``v`` buffers are lazily created as zero arrays of
+        identical shape.  This means no prior ``setup`` step is
+        required -- the optimizer is usable the moment it is
+        instantiated, regardless of the architecture being trained.
+
+        The step counter ``t`` is incremented *before* the bias
+        correction is computed, so that ``t = 1`` on the very first
+        call.  The first step therefore uses
+        ``m_hat = m / (1 - beta1)`` and ``v_hat = v / (1 - beta2)``,
+        which is the correct bias-correction formula in the paper.
 
         Side effects
         ------------
-        Mutates ``self.t``, ``self._m``, and ``self._v``.  The input
-        ``params`` and ``grads`` dictionaries are **not** modified.
+        Increments ``self.t``, mutates ``self._m`` and ``self._v``.
+        The input ``params`` and ``grads`` dictionaries are **not**
+        modified -- only the returned dictionary contains the updated
+        arrays.
 
         Complexity
         ----------
-        O(sum of all parameter sizes) -- one pass over every element.
+        ``O(sum of parameter sizes)``: one element-wise pass over every
+        gradient and parameter array.  No allocations beyond the
+        updated parameter arrays and the first-time moment buffers.
 
         Args:
-            params: Current parameter arrays keyed by group name
-                (``"weights"``, ``"biases"``).
+            params: Current parameter arrays, keyed by group name
+                (``"weights"``, ``"biases"``).  Values are lists of
+                numpy arrays (one per layer or group).
             grads: Gradient arrays with the same structure as *params*.
 
         Returns:
-            New parameter dictionary (same structure, new arrays).
+            A new parameter dictionary with the same structure as
+            *params*, containing the post-update arrays.  Callers are
+            expected to overwrite their parameters with the returned
+            values (see :meth:`~anbr.network.FullyConnectedNetwork.set_params`).
         """
         self.t += 1
         updated: Dict[str, List[np.ndarray]] = {}
@@ -110,17 +126,23 @@ class Adam:
             if key not in self._m:
                 self._m[key] = []
                 self._v[key] = []
-            # Grow moment lists to match the number of parameter arrays.
+            # Lazily extend the moment lists to match the number of
+            # parameter arrays, so callers can add or remove layers
+            # between calls without resetting the optimizer.
             while len(self._m[key]) < len(params[key]):
                 self._m[key].append(None)
                 self._v[key].append(None)
             for i, (p, g) in enumerate(zip(params[key], grads[key])):
+                # First contact with this parameter slot: lazily create
+                # matching-shape zero moment buffers.
                 if self._m[key][i] is None:
-                    # Lazy initialization: first call for this parameter.
                     self._m[key][i] = np.zeros_like(p)
                     self._v[key][i] = np.zeros_like(p)
                 m = self._m[key][i]
                 v = self._v[key][i]
+                # The asserts narrow the type for mypy/strict checkers;
+                # the assignment two lines above already guaranteed
+                # non-None, so these can never fail at runtime.
                 assert m is not None
                 assert v is not None
                 # Update biased moments (exponential moving averages).
@@ -128,7 +150,8 @@ class Adam:
                 v = self.beta2 * v + (1.0 - self.beta2) * (g**2)
                 self._m[key][i] = m
                 self._v[key][i] = v
-                # Bias-corrected estimates: compensate for zero-initialization.
+                # Bias-corrected estimates compensate for the
+                # zero-initialization of m and v.
                 m_hat = m / (1.0 - self.beta1**self.t)
                 v_hat = v / (1.0 - self.beta2**self.t)
                 p_new = p - self.learning_rate * m_hat / (

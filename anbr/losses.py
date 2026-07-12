@@ -30,14 +30,29 @@ import numpy as np
 
 
 class MSELoss:
-    """Mean squared error loss for regression.
+    r"""Mean squared error loss for regression.
 
-    Computes ``(1/n) * sum((y_pred - y_true)^2)``.  The gradient is
-    ``2(y_pred - y_true) / n`` where ``n`` equals the total number of
-    scalar elements (``y_pred.size``), not just the number of rows.
+    Computes the element-wise mean of squared residuals:
 
-    This distinction matters for multi-output regression: a prediction
-    of shape ``(100, 3)`` has ``n = 300``, not ``n = 100``.
+    .. math::
+
+        L = \frac{1}{N} \sum_{i,j} (y_{ij} - \hat{y}_{ij})^2
+            \quad\text{where } N = \texttt{y\_pred.size}
+
+    The gradient w.r.t. ``y_pred`` is ``2 (y_pred - y_true) / N`` --
+    the same ``N`` (the total scalar element count, not the number of
+    rows) appears in both forward and backward, so the gradient is the
+    exact derivative of the forward value.
+
+    Why divide by ``N`` rather than by ``n_samples``
+    ------------------------------------------------
+    For ``y_pred`` of shape ``(n_samples, n_outputs)`` we set
+    ``N = n_samples * n_outputs`` -- the total number of scalar
+    prediction entries.  This matches :func:`numpy.mean` (which divides
+    by ``size``) and the convention used by PyTorch's
+    :code:`MSELoss(reduction='mean')`.  Without this convention,
+    gradient magnitude would scale with the output dimension, which
+    would require the user to compensate via the learning rate.
 
     When to use
     -----------
@@ -49,15 +64,18 @@ class MSELoss:
         """Compute the scalar MSE loss.
 
         Args:
-            y_pred: Predictions of shape ``(n_samples, n_outputs)``.
-            y_true: Targets of shape ``(n_samples, n_outputs)``.
+            y_pred: Predictions of any shape broadcastable to ``y_true``,
+                typically ``(n_samples, n_outputs)`` or ``(n_samples,)``.
+            y_true: Targets with a shape broadcastable to ``y_pred``,
+                typically ``(n_samples, n_outputs)`` or ``(n_samples,)``.
 
         Returns:
-            Mean squared error as a Python float.
+            Mean squared error as a Python ``float``.
 
-        Raises:
-            ValueError: If ``y_pred`` and ``y_true`` have different shapes
-                (implicit via broadcasting).
+        Notes:
+            NumPy broadcasting applies to the subtraction, so inputs of
+            compatible but unequal shapes (e.g. ``(n, 3)`` and ``(n,)``)
+            are accepted silently rather than raising ``ValueError``.
         """
         diff = y_pred - y_true
         return float(np.mean(diff**2))
@@ -65,18 +83,26 @@ class MSELoss:
     def backward(self, y_pred: np.ndarray, y_true: np.ndarray) -> np.ndarray:
         """Compute the gradient of MSE w.r.t. ``y_pred``.
 
-        The gradient is ``(2 / n_elements) * (y_pred - y_true)`` where
-        ``n_elements = y_pred.size`` (total scalar entries).
-
-        This gradient is already scaled by ``1/n`` and ready to be passed
-        to ``FullyConnectedNetwork.backward``.
+        The returned gradient is
+        ``(2 / y_pred.size) * (y_pred - y_true)`` -- an array with the
+        same shape as ``y_pred`` and already divided by ``N`` (total
+        scalar elements).  It can be fed directly into
+        :meth:`~anbr.network.FullyConnectedNetwork.backward` without
+        further rescaling.
 
         Args:
-            y_pred: Predictions of shape ``(n_samples, n_outputs)``.
-            y_true: Targets of shape ``(n_samples, n_outputs)``.
+            y_pred: Predictions, typically ``(n_samples, n_outputs)``.
+            y_true: Targets with a shape broadcastable to ``y_pred``.
 
         Returns:
             Gradient array with the same shape as ``y_pred``.
+
+        Notes:
+            Because both the forward and backward operations divide by
+            ``y_pred.size`` (rather than by ``y_pred.shape[0]``),
+            gradient magnitude is invariant to the output dimension --
+            a ``(100, 3)`` and a ``(100, 1)`` prediction of equal
+            quality receive gradients of the same order of magnitude.
         """
         n_elements = y_pred.size
         return 2.0 * (y_pred - y_true) / n_elements
@@ -106,24 +132,31 @@ class CrossEntropyLoss:
         Args:
             logits: Raw scores of shape ``(n_samples, n_classes)``.
                 These are pre-softmax values; the softmax is applied
-                internally.
-            y_true: Integer class labels of shape ``(n_samples,)``.
+                internally for numerical stability.
+            y_true: Integer class labels of shape ``(n_samples,)`` with
+                values in ``[0, n_classes)``.
 
         Returns:
-            Mean cross-entropy as a Python float.
+            Mean cross-entropy as a Python ``float``.
 
         Raises:
-            IndexError: If any label in ``y_true`` is outside
-                ``[0, n_classes)``.
+            IndexError: If ``y_true`` has fewer entries than ``logits``
+                or if any label falls outside ``[0, n_classes)``.  NumPy's
+                fancy-indexing surfaces the out-of-range label directly;
+                this method performs no explicit validation, so the
+                error originates inside the indexing expression.
         """
-        # Numerically stable softmax: subtract row max to prevent overflow.
+        # Numerically stable softmax: subtract the row-max so the
+        # largest exponentiated logit is 1 and ``exp(.)`` never
+        # overflows.  Subtracting a constant leaves softmax(z) invariant.
         max_logits = np.max(logits, axis=1, keepdims=True)
         shifted = logits - max_logits
         exp_shifted = np.exp(shifted)
         probs = exp_shifted / np.sum(exp_shifted, axis=1, keepdims=True)
-        # Cross-entropy: -log(p[y_true]) with floor for numerical safety.
-        # The 1e-15 floor prevents log(0) when the model is extremely
-        # confident but wrong.
+        # Cross-entropy: -log(p[y_true]) with a floor for numerical
+        # safety.  The 1e-15 floor prevents log(0) when the model is
+        # extremely confident but wrong; without it we would emit
+        # -inf and poison downstream gradients.
         log_probs = np.log(probs[np.arange(len(y_true)), y_true] + 1e-15)
         return float(-np.mean(log_probs))
 

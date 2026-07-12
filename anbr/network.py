@@ -39,23 +39,62 @@ import numpy as np
 
 
 def xavier_uniform(fan_in: int, fan_out: int) -> np.ndarray:
-    """Sample a weight matrix from the Xavier uniform distribution.
+    r"""Sample a weight matrix from the Xavier uniform distribution.
 
-    Draws from ``Uniform(-limit, limit)`` where
-    ``limit = sqrt(6 / (fan_in + fan_out))``.  This variance scaling
-    keeps the variance of activations and gradients roughly constant
-    across layers, which stabilizes training for deep networks.
+    Draws each entry independently from ``Uniform(-limit, limit)`` with
+
+    .. math::
+
+        \text{limit} = \sqrt{\frac{6}{\text{fan\_in} + \text{fan\_out}}}
+
+    Derivation
+    ----------
+    The Xavier (Glorot) initialization seeks to keep the variance of
+    activations roughly constant across layers of a network with
+    activations symmetric around zero (linear, tanh, sigmoid).  For a
+    weight matrix ``W`` of shape ``(fan_in, fan_out)`` and an input
+    vector ``x`` with independent zero-mean entries, the variance of
+    ``y = W x`` equals ``fan_in * Var(W) * Var(x)``.  Solving for
+    ``Var(W) = 1 / fan_in`` would target the activation variance; the
+    symmetric compromise ``Var(W) = 2 / (fan_in + fan_out)`` keeps the
+    gradient variance (back-propagated through ``W^T``) on the same
+    scale, which Glorot & Bengio found empirically to outperform
+    fan-in-only schemes.
+
+    Translating variance to a uniform bound ``Uniform(-a, a)`` gives
+    ``Var = a^2 / 3``, hence ``a = sqrt(6 / (fan_in + fan_out))``.
+
+    Why uniform, not Gaussian
+    -------------------------
+    In practice both Xavier-uniform and Xavier-normal (Glorot) work
+    well; the paper finds uniform slightly easier on ReLU-free
+    activations.  We pair Xavier initialization with ReLU because a
+    latter paper (He et al., 2015) shows that ReLU benefits from a
+    ``fan_in``-only variance (``Var(W) = 2 / fan_in``), but the paper
+    being reproduced uses Xavier for all layers uniformly, and we
+    follow that convention exactly.
 
     References
     ----------
-    Glorot, X. & Bengio, Y. (2010).  Section 4.2, equation (12).
+    Glorot, X. & Bengio, Y. (2010).  "Understanding the difficulty of
+    training deep feedforward neural networks."  *AISTATS*, Section
+    4.2, equation (12).
 
     Args:
-        fan_in: Number of input features.
-        fan_out: Number of output features.
+        fan_in: Number of input features (``W.shape[0]``).
+        fan_out: Number of output features (``W.shape[1]``).
 
     Returns:
-        Weight matrix of shape ``(fan_in, fan_out)``.
+        Weight matrix of shape ``(fan_in, fan_out)``, dtype
+        ``float64`` (the NumPy default from ``np.random.uniform``).
+
+    Examples:
+        >>> w = xavier_uniform(3, 4)  # doctest: +SKIP
+        >>> w.shape
+        (3, 4)
+        >>> import numpy as np
+        >>> np.max(np.abs(w)) <= np.sqrt(6.0 / 7) + 1e-12  # doctest: +SKIP
+        True
     """
     limit = np.sqrt(6.0 / (fan_in + fan_out))
     return np.random.uniform(-limit, limit, size=(fan_in, fan_out))
@@ -67,19 +106,49 @@ class FullyConnectedNetwork:
     The network stores its own forward-pass activations and
     pre-activation values in ``_as`` and ``_zs`` respectively so that
     :meth:`backward` can compute exact gradients without re-running the
-    forward pass.
+    forward pass.  All weights and biases are stored as ``numpy``
+    arrays for transparent inspection during debugging.
+
+    Architecture
+    ------------
+    Given ``layer_sizes = [p, h_1, ..., h_k, q]``, the network has
+    ``k + 1`` weight matrices ``W^{(1)}, ..., W^{(k+1)}`` of shapes
+    ``(p, h_1)``, ``(h_1, h_2)``, ..., ``(h_k, q)`` and corresponding
+    bias row-vectors of shape ``(1, h_1)``, ..., ``(1, q)``.  Layers
+    1 through ``k`` apply ``ReLU(z) = max(z, 0)``; the output layer
+    applies the identity (for regression) or hands its raw logits off
+    to :class:`~anbr.losses.CrossEntropyLoss` for classification.
+
+    Weight and bias shapes
+    ----------------------
+    Each ``weights[i]`` has shape ``(layer_sizes[i], layer_sizes[i+1])``
+    and each ``biases[i]`` has shape ``(1, layer_sizes[i+1])`` -- a
+    row vector that is broadcast across the batch dimension.
 
     Attributes:
         layer_sizes: List of layer widths ``[input, hidden_1, ..., output]``.
         n_layers: Number of weight matrices (``len(layer_sizes) - 1``).
-        weights: List of weight matrices, one per layer.
-        biases: List of row-vector biases, one per layer.
+        weights: List of weight matrices, one per layer, in
+            input-to-output order.  Initialised with
+            :func:`xavier_uniform`.
+        biases: List of row-vector biases, one per layer.  Initialised
+            to zero for reproducible gradient-flow studies.
 
     Thread safety
     -------------
     The network is not thread-safe: :meth:`forward` mutates internal
     caches (``_zs``, ``_as``).  Do not call ``forward`` and ``backward``
-    concurrently from different threads.
+    concurrently from different threads; training must use either a
+    single producer (the trainer) or external synchronization.
+
+    Examples:
+        >>> net = FullyConnectedNetwork([10, 64, 32, 1])
+        >>> out = net.forward(np.random.randn(8, 10))
+        >>> out.shape
+        (8, 1)
+        >>> grads = net.backward(np.ones_like(out))
+        >>> sorted(grads.keys())
+        ['biases', 'weights']
     """
 
     def __init__(self, layer_sizes: List[int]) -> None:

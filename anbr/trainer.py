@@ -1,4 +1,4 @@
-"""Training loop with mini-batching, early stopping, and standardization.
+"""Training loop with mini-batching, early stopping, and validation.
 
 The :class:`Trainer` class orchestrates the epoch-level training loop,
 including:
@@ -24,11 +24,29 @@ applied to **every** weight matrix, which is the standard approach.
 
 Gradient flow
 -------------
-The gradient path is: loss.backward -> network.backward -> regularizer
-gradient -> optimizer.step.  The ``1/n`` scaling lives in the loss
-backward, not in the network backward.  This means the network backward
-computes raw gradients (summed across samples), and the loss backward
-divides by the total number of scalar elements.
+Each update step computes:
+
+1. ``y_pred = network.forward(x_batch)``
+2. ``loss = loss_fn.forward(y_pred, y_batch)`` (plus any regularizer penalty)
+3. ``dloss = loss_fn.backward(y_pred, y_batch)`` -- already divided by
+   ``n`` (sample count for cross-entropy, total elements for MSE).
+4. ``grads = network.backward(dloss)`` -- raw parameter gradients.
+5. ``grads["weights"][i] += regularizer.gradient(weights[i])`` for every
+   layer, or only for the first when the regularizer is geometry-aware.
+6. ``new_params = optimizer.step(params, grads)`` -- Adam update.
+
+The ``1/N`` scaling lives in the loss backward (not the network
+backward), so the network backward always operates on per-batch
+sum-of-gradients and the same scaling convention is applied at every
+call site.
+
+Lifecycle
+---------
+A :class:`Trainer` is intended for a single training run on a single
+network.  Re-using the same trainer for a second independent
+optimization (different data, different network) is **not** supported:
+the network weights, optimizer state, and history are all carried over.
+Construct a fresh :class:`Trainer` for each run.
 """
 
 from typing import Dict, List, Optional
@@ -116,29 +134,57 @@ class Trainer:
     ) -> None:
         """Train the network on *x_train* with optional validation.
 
-        The training loop shuffles the data each epoch, iterates over
-        mini-batches, and updates parameters via the optimizer.  When
-        ``early_stopping`` is enabled and validation data is provided,
-        the best parameters (lowest validation loss) are restored at the
-        end of training.
+        Each epoch randomly permutes ``x_train`` and iterates over
+        mini-batches.  For every batch the trainer:
+
+        1. Runs the network forward pass.
+        2. Computes the data loss and (per layer) the regularizer penalty.
+        3. Runs the loss backward and then the network backward to
+           obtain parameter gradients.
+        4. Adds the analytic regularizer gradient to every weight
+           gradient (geometry-aware regularizers modify only
+           ``weights[0]``; see the module docstring).
+        5. Applies one :meth:`~anbr.optimizer.Adam.step`.
+
+        Input shape flexibility
+        -----------------------
+        ``y_train`` is accepted as any of the common shapes
+        (``(n, 1)``, ``(n,)``, or higher-dimensional ``(n, k)``); the
+        loss function decides how the dimensions are interpreted, and
+        the network's last layer determines its column count.
+
+        Early stopping
+        --------------
+        When ``early_stopping=True`` and ``x_val``/``y_val`` are
+        provided, the best validation-loss snapshot is restored at the
+        end of training (also when the loop exits via the patience
+        counter).
 
         Side effects
         ------------
-        Mutates ``self.network`` weights, ``self.optimizer`` state, and
-        ``self.history``.
+        * Mutates the network weights and biases in place.
+        * Increments the optimizer step counter and updates its moment
+          buffers.
+        * Appends to :attr:`history["train_loss"]` once per epoch;
+          appends to :attr:`history["val_loss"]` only when validation
+          data is supplied.
 
         Complexity
         ----------
-        O(epochs * n_samples * (forward + backward + update)).  The
-        forward and backward passes are each O(sum of layer sizes * batch
-        size).
+        ``O(epochs * n_train * (F + B + U))`` where ``F``, ``B``, ``U``
+        are the costs of forward, backward, and optimizer step on a
+        single batch.  Memory use is proportional to ``batch_size *
+        depth`` (caches for the backward pass).
 
         Args:
-            x_train: Training inputs of shape ``(n, p)``.
-            y_train: Training targets of shape ``(n, 1)`` or ``(n,)``.
+            x_train: Training inputs of shape ``(n_train, p)``.
+            y_train: Training targets, shape ``(n_train,)`` for
+                classification or ``(n_train, n_outputs)`` for
+                regression / multi-output classification.
             x_val: Validation inputs (optional).  Required for early
-                stopping and validation loss tracking.
-            y_val: Validation targets (optional).
+                stopping and for populating ``history['val_loss']``.
+            y_val: Validation targets (optional).  Required for early
+                stopping and for populating ``history['val_loss']``.
 
         Raises:
             ValueError: If ``early_stopping`` is ``True`` but ``x_val``
@@ -163,15 +209,14 @@ class Trainer:
                 x_batch = x_train[batch_idx]
                 y_batch = y_train[batch_idx]
 
-                # Forward pass and loss.
+                # Forward pass and data loss.
                 y_pred = self.network.forward(x_batch)
                 loss = self.loss_fn.forward(y_pred, y_batch)
 
-                # Regularization penalty.
-                # NOTE: Covridge and Sparridge are applied only to the first
-                # layer because C_{delta,n} is computed from the input
-                # dimension.  This is a design assumption not explicitly
-                # stated in the paper.
+                # Regularization penalty.  Geometry-aware regularizers
+                # (Covridge, Sparridge) are applied only to the first
+                # weight matrix because C_{delta,n} is computed from
+                # the input dimension -- see the module docstring.
                 reg_penalty = 0.0
                 if isinstance(self.regularizer, (Covridge, Sparridge)):
                     reg_penalty += self.regularizer.penalty(
@@ -183,11 +228,12 @@ class Trainer:
                 total_loss = loss + reg_penalty
                 epoch_losses.append(total_loss)
 
-                # Backward pass.
+                # Backward pass through loss and network.
                 dloss = self.loss_fn.backward(y_pred, y_batch)
                 grads = self.network.backward(dloss)
 
-                # Add regularizer gradients.
+                # Accumulate analytic regularizer gradients onto the
+                # weight gradients.  Mirrors the penalty branch above.
                 if isinstance(self.regularizer, (Covridge, Sparridge)):
                     grads["weights"][0] += self.regularizer.gradient(
                         self.network.weights[0]
@@ -196,7 +242,9 @@ class Trainer:
                     for i, w in enumerate(self.network.weights):
                         grads["weights"][i] += self.regularizer.gradient(w)
 
-                # Optimizer step.
+                # Optimizer step: hand the network's current parameters
+                # along with their (regularized) gradients to Adam and
+                # replace the parameters with the returned updates.
                 params = {
                     "weights": self.network.weights,
                     "biases": self.network.biases,
@@ -225,6 +273,9 @@ class Trainer:
                     if val_loss < best_val_loss:
                         best_val_loss = val_loss
                         patience_counter = 0
+                        # Deep-copy via FullyConnectedNetwork.get_params
+                        # so subsequent weight updates don't mutate
+                        # the snapshot.
                         best_params = self.network.get_params()
                     else:
                         patience_counter += 1
@@ -247,13 +298,25 @@ class Trainer:
     def predict(self, x: np.ndarray) -> np.ndarray:
         """Generate predictions for the given input.
 
-        Runs a single forward pass through the network.  This does not
-        modify the network weights or optimizer state.
+        Runs a single forward pass through the underlying network.  Does
+        **not** mutate the network weights or the optimizer state.
+        Suitable for evaluation, calibration, or ensembling without
+        affecting the trained model.
 
         Args:
             x: Input array of shape ``(n_samples, n_features)``.
 
         Returns:
-            Network output of shape ``(n_samples, n_outputs)``.
+            Network output of shape ``(n_samples, n_outputs)``.  For
+            regression these are continuous predictions; for
+            classification these are pre-softmax logits -- pass the
+            output through ``np.argmax(..., axis=1)`` to recover class
+            labels.
+
+        Notes:
+            For ``n_samples == 1`` the forward pass still returns a
+            ``(1, n_outputs)`` 2-D array.  Subsequent NumPy operations
+            (``np.squeeze``, ``item()``) may be needed to reduce it to
+            a scalar.
         """
         return self.network.forward(x)

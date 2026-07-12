@@ -145,13 +145,29 @@ def grid_search_cv(
 
     Each combination in *param_grid* is evaluated on *n_splits* folds.
     A fresh network, regularizer, and optimizer are created per fold to
-    avoid state leakage.
+    avoid state leakage, and each fold trains for ``epochs`` epochs
+    (unless ``early_stopping`` truncates sooner).
 
-    The scoring metric depends on *task*:
+    Scoring metric
+    --------------
+    The scoring metric is selected via *task*:
 
-    * ``"regression"``: negative MSE (higher is better, matches sklearn
-      convention).
-    * ``"classification"``: balanced accuracy (higher is better).
+    * ``"regression"`` -- **negative MSE** (higher is better; matches
+      sklearn's "greater is better" convention).
+    * ``"classification"`` -- **balanced accuracy** (higher is better).
+
+    Within a single grid point the metric is averaged across folds;
+    across grid points the best mean metric wins.
+
+    Cost
+    ----
+    Training budget is ``len(param_grid) * n_splits`` independent
+    model fits, each running for up to ``epochs`` epochs.  For the
+    paper's 5-value ``SIM_GRID`` with Covridge/Sparridge (25
+    combinations), ``grid_search_cv`` performs 125 model fits per CV
+    run.  Consider smaller grids or ``early_stopping=True`` during
+    development; the full grid with ``epochs=500`` is reserved for the
+    final experimental runs.
 
     Args:
         x: Feature matrix of shape ``(n, p)``.
@@ -161,6 +177,9 @@ def grid_search_cv(
             output.
         method: Regularization method name (see :func:`build_regularizer`).
         param_grid: List of hyperparameter dictionaries to evaluate.
+                An empty list is accepted but the function will fail on
+                ``max`` of an empty sequence -- callers should pass at
+                least one configuration.
         loss_fn: Loss function instance.
         n_splits: Number of CV folds (default ``5``).
         batch_size: Mini-batch size (default ``32``).
@@ -169,16 +188,24 @@ def grid_search_cv(
         early_stopping: Enable early stopping within each fold.
         patience: Early-stopping patience (default ``10``).
         task: ``"regression"`` or ``"classification"``.
-        random_state: Seed for the ``KFold`` splitter.
+        random_state: Seed for the ``KFold`` splitter.  Pass an int for
+            reproducibility; ``None`` defers to NumPy's default seeding.
 
     Returns:
-        ``(best_params, best_score)`` where *best_score* is negative MSE
-        (higher is better) for regression or balanced accuracy for
-        classification.
+        ``(best_params, best_score)``:
+
+        * ``best_params`` -- the dictionary (a copy of the winning
+          grid entry) that achieved the highest mean fold score.
+          Empty when *method* is ``"none"``.
+        * ``best_score`` -- the corresponding mean score: negative MSE
+          for ``task="regression"``, balanced accuracy for
+          ``task="classification"``.
 
     Raises:
-        ValueError: If *task* is not ``"regression"`` or
-            ``"classification"``.
+        ValueError: If *task* is not one of the recognized strings.
+        KeyError: Propagated from the chosen regularizer when a
+            hyperparameter key required by *method* is missing from a
+            grid entry.
     """
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
     best_score = -float("inf")

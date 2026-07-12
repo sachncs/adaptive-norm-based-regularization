@@ -56,11 +56,22 @@ def _make_covariance_matrix(k: int, rho: float) -> np.ndarray:
     the paper's DGP to introduce controlled multicollinearity among
     informative features.
 
+    The matrix has the closed form
+    ``Sigma_k = (1 - rho) I_k + rho * 1_k 1_k^T`` and is positive
+    definite exactly when ``rho in (-1/(k-1), 1)``.  In particular:
+
+    * ``rho == 0`` recovers the identity covariance -- informative
+      features become independent standard normals.
+    * ``rho -> 1`` makes informative features perfectly collinear.
+    * Negative ``rho`` produces an oscillating correlation structure
+      that still satisfies positive-definiteness for moderate
+      magnitudes.
+
     Args:
-        k: Dimension of the matrix.
-        rho: Off-diagonal correlation value.  For a valid positive-
-            definite covariance, ``|rho| < 1`` is required.  The caller
-            is responsible for validation.
+        k: Dimension of the matrix.  Must be positive.
+        rho: Off-diagonal correlation value.  Caller is responsible for
+            keeping ``rho`` within the positive-definite range when
+            non-trivial.
 
     Returns:
         Covariance matrix of shape ``(k, k)``.
@@ -234,17 +245,38 @@ def load_energy_data(
     The dataset has 8 features (relative compactness, surface area, wall
     area, roof area, overall height, orientation, glazing area, glazing
     area distribution) and 2 targets (heating load ``y1``, cooling load
-    ``y2``).  We use ``y2`` as in the paper.
+    ``y2``).  This loader returns ``y2`` as the target, matching the
+    paper's choice.
 
-    Features are standardised using :class:`StandardScaler` fit on the
-    training split only, to prevent information leakage from the test set.
+    Standardization
+    ---------------
+    Features are z-scored using :class:`StandardScaler`.  The scaler
+    is **fit on the training split only** and then applied to the test
+    split, preventing information leakage from test into train.  The
+    fitted scaler is returned so callers can apply it to additional
+    held-out data (e.g. a validation set collected from the same
+    population).
 
     Args:
         test_size: Fraction of samples reserved for the test set.
         random_state: Seed for the train/test split.
 
     Returns:
-        ``(X_train, X_test, y_train, y_test, scaler)``.
+        ``(X_train, X_test, y_train, y_test, scaler)``:
+
+        * ``X_train`` -- standardized training features, shape
+          ``(n_train, 8)``.
+        * ``X_test`` -- standardized test features, shape
+          ``(n_test, 8)``.
+        * ``y_train`` -- training targets, shape ``(n_train, 1)``.
+        * ``y_test`` -- test targets, shape ``(n_test, 1)``.
+        * ``scaler`` -- the fitted :class:`StandardScaler` for reuse
+          on additional data.
+
+    Raises:
+        sklearn.datasets._fetch_fail: Surfaced from OpenML if the
+            dataset is unavailable; this loader does not retry or
+            cache.
     """
     data = fetch_openml(name="energy-efficiency", as_frame=True, parser="auto")
     df = data.frame
@@ -277,17 +309,35 @@ def load_leukemia_data(
     this dataset.
 
     Args:
-        n_features: Number of features to keep via ANOVA F-test.
+        n_features: Number of features to keep via ANOVA F-test.  Must
+            be ``<= total probes``; the loader does not validate and
+            ``numpy.argsort`` will silently truncate if the value
+            exceeds the available count.
         test_size: Fraction of samples reserved for the test set.
         random_state: Seed for the train/test split.
 
     Returns:
-        ``(X_train, X_test, y_train, y_test, scaler)``.
+        ``(X_train, X_test, y_train, y_test, scaler)``:
+
+        * ``X_train`` -- standardized training features, shape
+          ``(n_train, n_features)``.
+        * ``X_test`` -- standardized test features, shape
+          ``(n_test, n_features)``.
+        * ``y_train`` -- integer-encoded training labels in
+          ``[0, n_classes)``, shape ``(n_train,)``.
+        * ``y_test`` -- integer-encoded test labels, shape
+          ``(n_test,)``.
+        * ``scaler`` -- the fitted :class:`StandardScaler` for reuse
+          on additional data.
 
     Raises:
         RuntimeError: If the dataset cannot be fetched from OpenML.
+            The original exception is chained via ``raise ... from``.
     """
-    # Attempt to fetch from OpenML (GSE9476 surrogate).
+    # Attempt to fetch from OpenML (GSE9476 surrogate).  Catching
+    # ``Exception`` is deliberate: sklearn raises different concrete
+    # subclasses depending on the failure mode (network, schema,
+    # parse), and we want a single, actionable error for callers.
     try:
         data = fetch_openml(data_id=1120, as_frame=True, parser="auto")
     except Exception as exc:
@@ -300,11 +350,15 @@ def load_leukemia_data(
     x = df.drop(columns=data.target_names).astype(float).to_numpy()
     le = LabelEncoder()
     y = le.fit_transform(y_raw)
-    # ANOVA feature selection: keep the n_features with highest F-values.
+    # ANOVA feature selection: rank features by F-statistic (between-
+    # group variance / within-group variance) and keep the top
+    # ``n_features``.  This reduces the dimensionality from tens of
+    # thousands of probes to a manageable size while preserving the
+    # most class-discriminative signal.
     f_values, _ = f_classif(x, y)
     top_idx = np.argsort(f_values)[-n_features:]
     x = x[:, top_idx]
-    # Stratified split to preserve class balance.
+    # Stratified split to preserve class balance across train/test.
     x_train, x_test, y_train, y_test = train_test_split(
         x, y, test_size=test_size, random_state=random_state, stratify=y
     )
