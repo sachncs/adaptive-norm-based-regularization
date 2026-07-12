@@ -16,6 +16,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rebuilt README with centered header, badge block, Quick Start
   (CLI + Python API), Code Style, Commit Conventions, and Tech Stack
   subsections (`ecb68ad` — 2026-07-11)
+- Refined docstrings across `anbr/cv.py`, `anbr/data.py`, `anbr/losses.py`,
+  `anbr/metrics.py`, `anbr/network.py`, `anbr/optimizer.py`,
+  `anbr/trainer.py`, and `tests/__init__.py` -- documented the `1/N`
+  MSE averaging convention, the softmax numerical-stability
+  subtraction and log-floor, the lazy Adam moment-buffer
+  initialisation contract, the Trainer single-run lifecycle, the
+  closed-form equi-correlation covariance, the per-class-recall
+  balanced-accuracy formula, and the cross-validation training
+  budget (`0644805` — 2026-07-12)
+- New README Architecture section with gradient-flow diagram, five
+  mathematical-guarantee statements, and Lifecycle note; introduced
+  Configuration tables (Network Architecture, Regularizers, Optimizer)
+  and a dedicated Tech Stack table; corrected Code Style line-length
+  claim (80, matching `pyproject.toml`) and added a `grid_search_cv`
+  Quick Start example (`ddacc2a` — 2026-07-12)
 
 ### Changed
 
@@ -27,6 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`2b8316d` — 2026-07-11)
 - Updated CHANGELOG with all commit IDs and dates across v0.1.0,
   v0.1.1, and Unreleased (`af255b2` — 2026-07-11)
+- `CONTRIBUTING.md` -- switched the Docstring Format section from
+  NumPy-style to Google-style (matching the convention used in
+  `anbr/`) and corrected the PR-target branch from `main` to `master`
+- `SECURITY.md` -- replaced `[INSERT SECURITY EMAIL]` placeholders
+  with the project's actual contact address
 
 ### Fixed
 
@@ -43,6 +63,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   errors on CI (`221e1d9` — 2026-07-11)
 - Cast `np.linspace` result to native `float` in `run_real_data.py`
   for mypy `list[float]` compatibility (`813343d` — 2026-07-11)
+- Removed misleading `Raises: ValueError (implicit via broadcasting)`
+  on `MSELoss.forward` and replaced it with an honest Notes block
+  describing NumPy broadcasting behaviour (`0644805` — 2026-07-12)
+- Corrected the outdated line-length claim in the README from "88
+  (black default)" to the actual `pyproject.toml` setting of 80
+  (`ddacc2a` — 2026-07-12)
+- Resolved ruff `F401` unused-import warning on `anbr.data.make_dgp3`
+  in `demo/run_simulation.py` (`672bb76` — 2026-07-12)
 
 ### Removed
 
