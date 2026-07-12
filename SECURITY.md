@@ -14,7 +14,7 @@ responsibly. **Do not open a public GitHub issue for security vulnerabilities.**
 
 ### How to Report
 
-1. **Email**: Send a description to **[INSERT SECURITY EMAIL]**
+1. **Email**: Send a description to **sachncs@gmail.com**
 2. **Subject line**: `[SECURITY] Brief description of vulnerability`
 3. **Include**:
    - Description of the vulnerability
@@ -61,6 +61,6 @@ cover:
 ## Contact
 
 For security-related inquiries, please contact:
-- **Email**: [INSERT SECURITY EMAIL]
+- **Email**: sachncs@gmail.com
 - **GitHub**: Open a private security advisory via GitHub's "Report a
   vulnerability" feature

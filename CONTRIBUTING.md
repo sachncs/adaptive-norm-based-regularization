@@ -133,7 +133,7 @@ The optional scope should be the module affected:
 ### Submitting a PR
 
 1. Push your branch to your fork
-2. Open a Pull Request against `main`
+2. Open a Pull Request against `master`
 3. Fill out the PR template completely
 4. Link any related issues
 5. Ensure CI passes
@@ -165,23 +165,27 @@ The optional scope should be the module affected:
 
 ### Docstring Format
 
-Use NumPy-style docstrings:
+Use Google-style docstrings with `Args`, `Returns`, and `Raises`
+sections -- this matches the convention used throughout `anbr/`:
 
 ```python
 def regularize(self, weights: np.ndarray) -> float:
     """Compute the regularization penalty.
 
-    Parameters
-    ----------
-    weights : np.ndarray
-        Weight matrix of shape (n_features, n_outputs).
+    Args:
+        weights: Weight matrix of shape ``(n_features, n_outputs)``.
 
-    Returns
-    -------
-    float
-        The scalar regularization penalty.
+    Returns:
+        The scalar regularization penalty as a ``float``.
     """
 ```
+
+A short summary line (one sentence, imperative) is followed by any
+necessary elaboration, then by the structured sections.  Where a
+function has non-obvious behaviour, add an inline example or a
+``Notes:`` block.  The ``why`` of an implementation belongs in the
+docstring or as an inline comment; the ``what`` is left to the code
+itself.
 
 ### Type Hints
 
