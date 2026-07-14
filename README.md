@@ -1,12 +1,12 @@
 <p align="center">
-  <h1 align="center">ANBR — Adaptive Norm-Based Regularization</h1>
+  <h1 align="center">anbr</h1>
   <p align="center">Pure Python (NumPy-only) reproduction of Qasim &amp; Javed (Lund University).</p>
   <p align="center">
     <a href="#installation"><img src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue" alt="Python"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
     <a href="https://github.com/sachncs/adaptive-norm-based-regularization/actions"><img src="https://img.shields.io/github/actions/workflow/status/sachncs/adaptive-norm-based-regularization/ci.yml?branch=master" alt="CI"></a>
+    <a href="https://pypi.org/project/anbr/"><img src="https://img.shields.io/pypi/v/anbr" alt="PyPI"></a>
     <a href="https://github.com/sachncs/adaptive-norm-based-regularization/stargazers"><img src="https://img.shields.io/github/stars/sachncs/adaptive-norm-based-regularization" alt="Stars"></a>
-    <a href="https://github.com/psf/black"><img src="https://img.shields.io/badge/code%20style-black-000000.svg" alt="Code style: black"></a>
   </p>
 </p>
 
@@ -42,6 +42,12 @@ gradients, and there are no hidden deep-learning framework defaults.
 ---
 
 ## Installation
+
+### From PyPI
+
+```bash
+pip install anbr
+```
 
 ### From source
 
@@ -171,92 +177,6 @@ See [docs/api.md](docs/api.md) for the complete regularizer reference.
 
 ---
 
-## Project Structure
-
-```
-adaptive-norm-based-regularization/
-├── anbr/                  # Core library
-│   ├── __init__.py        # Package overview and quick start
-│   ├── regularizers.py    # Ridge, Lasso, ElasticNet, Covridge, Sparridge
-│   ├── losses.py          # MSE and softmax cross-entropy
-│   ├── network.py         # Feedforward ReLU network with manual backprop
-│   ├── optimizer.py       # NumPy Adam optimizer
-│   ├── data.py            # DGP generators and real-data loaders
-│   ├── metrics.py         # MSE, MAE, RMSE, R², balanced accuracy
-│   ├── trainer.py         # Training loop with early stopping
-│   └── cv.py              # k-fold CV and hyperparameter grid search
-├── tests/                 # Test suite (81 tests)
-│   ├── test_regularizers.py
-│   ├── test_network.py
-│   ├── test_optimizer.py
-│   ├── test_losses.py
-│   ├── test_metrics.py
-│   ├── test_data.py
-│   └── test_integration.py
-├── demo/                  # Experiment reproduction scripts
-│   ├── run_simulation.py  # Replicates Tables 1–3 from the paper
-│   └── run_real_data.py   # UCI Energy + GSE9476 Leukemia experiments
-├── docs/                  # Documentation
-│   ├── math.md            # Mathematical foundations
-│   ├── architecture.md    # System architecture
-│   ├── api.md             # Complete API reference
-│   ├── usage.md           # Setup and usage guide
-│   ├── fidelity.md        # Paper-to-code fidelity report
-│   ├── getting-started.md # Quick start guide
-│   └── faq.md             # Frequently asked questions
-└── pyproject.toml         # Build & tool config
-```
-
----
-
-## Development
-
-```bash
-# Install with dev dependencies
-pip install -e ".[dev]"
-
-# Run all tests
-pytest tests/ -v
-
-# Format code
-black --target-version py310 anbr tests demo
-isort anbr tests demo
-
-# Check formatting (CI mode)
-black --check --target-version py310 anbr tests demo
-isort --check-only anbr tests demo
-
-# Type check
-mypy anbr tests demo
-
-# All checks
-pytest && black --check --target-version py310 anbr tests demo && isort --check-only anbr tests demo && mypy anbr tests demo
-```
-
-### Code Style
-
-- Line length: 80 (configured in `pyproject.toml`)
-- Formatting: [black](https://github.com/psf/black) with `--target-version py310`
-- Import sorting: [isort](https://pycqa.github.io/isort/) (black-compatible profile)
-- Type hints: required on all public signatures
-- Docstrings: [Google style](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings)
-  with `Args`, `Returns`, `Raises` sections; explain *why*, not *what*
-
-### Commit Conventions
-
-We use [Conventional Commits](https://www.conventionalcommits.org/):
-
-```
-feat: add Sparridge regularizer with geometry-aware penalty
-fix: clamp negative eigenvalues in Covridge eigendecomposition
-docs: add comprehensive docstrings across all modules
-refactor: remove unused imports from trainer and cv
-test: add finite-difference gradient verification
-chore: update CHANGELOG with commit references
-```
-
----
-
 ## Architecture
 
 The implementation separates concerns into isolated, transparently-testable
@@ -305,31 +225,101 @@ is not supported; construct a fresh `Trainer` per run.
 
 ---
 
-## Tech Stack
+## Project Structure
 
-| Category       | Technology                                       |
-|----------------|--------------------------------------------------|
-| Language       | Python 3.10+ (3.10, 3.11, 3.12, 3.13 in CI)       |
-| Numerical      | [NumPy](https://numpy.org/), [SciPy](https://scipy.org/) |
-| Data           | [pandas](https://pandas.pydata.org/), scikit-learn datasets |
-| ML Utilities   | [scikit-learn](https://scikit-learn.org/) (CV splits, scaling) |
-| Build          | [setuptools](https://setuptools.pypa.io/)        |
-| Lint / Format  | [black](https://github.com/psf/black), [isort](https://pycqa.github.io/isort/), [pydocstyle](https://pydocstyle.org/) |
-| Type Check     | [mypy](https://mypy-lang.org/)                   |
-| Testing        | [pytest](https://docs.pytest.org/)               |
-| CI / CD        | [GitHub Actions](https://github.com/features/actions) |
+```
+adaptive-norm-based-regularization/
+├── anbr/                  # Core library
+│   ├── __init__.py        # Package overview and quick start
+│   ├── regularizers.py    # Ridge, Lasso, ElasticNet, Covridge, Sparridge
+│   ├── losses.py          # MSE and softmax cross-entropy
+│   ├── network.py         # Feedforward ReLU network with manual backprop
+│   ├── optimizer.py       # NumPy Adam optimizer
+│   ├── data.py            # DGP generators and real-data loaders
+│   ├── metrics.py         # MSE, MAE, RMSE, R², balanced accuracy
+│   ├── trainer.py         # Training loop with early stopping
+│   └── cv.py              # k-fold CV and hyperparameter grid search
+├── tests/                 # Test suite (81 tests)
+│   ├── test_regularizers.py
+│   ├── test_network.py
+│   ├── test_optimizer.py
+│   ├── test_losses.py
+│   ├── test_metrics.py
+│   ├── test_data.py
+│   └── test_integration.py
+├── demo/                  # Experiment reproduction scripts
+│   ├── run_simulation.py  # Replicates Tables 1–3 from the paper
+│   └── run_real_data.py   # UCI Energy + GSE9476 Leukemia experiments
+├── docs/                  # Documentation
+│   ├── math.md            # Mathematical foundations
+│   ├── architecture.md    # System architecture
+│   ├── api.md             # Complete API reference
+│   ├── usage.md           # Setup and usage guide
+│   ├── fidelity.md        # Paper-to-code fidelity report
+│   ├── getting-started.md # Quick start guide
+│   └── faq.md             # Frequently asked questions
+└── pyproject.toml         # Build & tool config
+```
 
 ---
 
-## Roadmap
+## Development
 
-- **v0.1.0** — Current release: core implementation, 6 regularizers, all
-  demo scripts, 81 tests
-- **v0.2.0** — Sparse-matrix optimization for high-dimensional `C_{δ,n}`
-- **v0.3.0** — Learning-rate decay schedules; PyTorch reference
-  implementation for gradient verification
-- **v1.0.0** — Additional UCI benchmarks, PyPI release, GPU acceleration
-  via CuPy (optional)
+```bash
+pip install -e ".[dev]"
+pytest tests/ -v
+ruff check anbr/ tests/
+ruff format anbr/ tests/
+mypy anbr/
+```
+
+### Code Style
+
+- Line length: 80 (configured in `pyproject.toml`)
+- Formatting: [black](https://github.com/psf/black) with `--target-version py310`
+- Import sorting: [isort](https://pycqa.github.io/isort/) (black-compatible profile)
+- Type hints: required on all public signatures
+- Docstrings: [Google style](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings)
+  with `Args`, `Returns`, `Raises` sections; explain *why*, not *what*
+
+### Commit Conventions
+
+We use [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+feat: add Sparridge regularizer with geometry-aware penalty
+fix: clamp negative eigenvalues in Covridge eigendecomposition
+docs: add comprehensive docstrings across all modules
+refactor: remove unused imports from trainer and cv
+test: add finite-difference gradient verification
+chore: update CHANGELOG with commit references
+```
+
+---
+
+## Testing
+
+```bash
+pytest tests/ -v
+pytest tests/ --cov=anbr --cov-report=term-missing
+```
+
+---
+
+## Build
+
+```bash
+python -m build
+```
+
+---
+
+## Release
+
+1. Bump version in `pyproject.toml`
+2. Update `CHANGELOG.md` with the new release notes
+3. Commit with a `version:X.Y.Z` message
+4. Tag the commit and push — GitHub Actions publishes to PyPI
 
 ---
 
@@ -350,6 +340,34 @@ is not supported; construct a fresh `Trainer` per run.
 | Early stopping (patience=10)       | **Exact**   | Used for classification                |
 
 See [docs/fidelity.md](docs/fidelity.md) for the full fidelity report.
+
+---
+
+## Tech Stack
+
+| Category       | Technology                                       |
+|----------------|--------------------------------------------------|
+| Language       | Python 3.10+ (3.10, 3.11, 3.12, 3.13 in CI)       |
+| Numerical      | [NumPy](https://numpy.org/), [SciPy](https://scipy.org/) |
+| Data           | [pandas](https://pandas.pydata.org/), scikit-learn datasets |
+| ML Utilities   | [scikit-learn](https://scikit-learn.org/) (CV splits, scaling) |
+| Build          | [setuptools](https://setuptools.pypa.io/)        |
+| Lint / Format  | [ruff](https://docs.astral.sh/ruff/)             |
+| Type Check     | [mypy](https://mypy-lang.org/)                   |
+| Testing        | [pytest](https://docs.pytest.org/)               |
+| CI / CD        | [GitHub Actions](https://github.com/features/actions) |
+
+---
+
+## Roadmap
+
+- **v0.1.1** — Current release: core implementation, 6 regularizers, all
+  demo scripts, 81 tests
+- **v0.2.0** — Sparse-matrix optimization for high-dimensional `C_{δ,n}`
+- **v0.3.0** — Learning-rate decay schedules; PyTorch reference
+  implementation for gradient verification
+- **v1.0.0** — Additional UCI benchmarks, PyPI release, GPU acceleration
+  via CuPy (optional)
 
 ---
 
