@@ -100,3 +100,9 @@ data/
 
 # pyright
 pyrightconfig.json
+
+# Site (frontend)
+site/node_modules/
+site/dist/
+site/.vite/
+*.tsbuildinfo
